@@ -1,4 +1,4 @@
-# Gym Management System (GMS)
+# Gym Management System (GMS) 🏋️🏋️
 
 A centralized web application designed to manage gym operations, membership renewals, automate trainer and class scheduling, and track equipment maintenance lifecycles. This repository hosts the deliverables for the Software Engineering Mini-Project.
 
