@@ -28,6 +28,8 @@ Same-origin `/api` avoids exposing permissive CORS. All requests with bodies mus
 | GET | `/api/me` | Signed in | `user` |
 | GET | `/api/dashboard` | Signed in | `user`, role-scoped `stats`, at most 5 `upcomingClasses` |
 | GET | `/api/members` | Admin | `items`, first 50 members, no email/password |
+| POST / DELETE | `/api/users/delete` | Admin | JSON `userId` or `:id` → delete confirmation or 403 |
+| GET | `/api/revenue/view` | Admin | Total revenue & breakdown by tier or 403 |
 | GET | `/api/classes` | Signed in | `items`, next 50 open classes (own classes for Trainer) |
 | GET | `/api/bookings` | Signed in | `items`, latest 50 (own for Member; own classes for Trainer) |
 | GET | `/api/equipment` | Signed in | `items`, first 50 inventory IDs (available only for Member) |

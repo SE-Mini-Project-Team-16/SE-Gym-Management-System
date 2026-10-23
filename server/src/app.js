@@ -1,7 +1,5 @@
 import express from "express";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { fileURLToPath } from "node:url";
@@ -14,17 +12,17 @@ import {
   apiError,
   errorHandler,
 } from "./middleware.js";
+import {
+  loginHandler,
+  createLoginRateLimiter,
+  getProfile,
+  sanitizeUser,
+} from "./controllers/authController.js";
+import { deleteUser, getRevenue } from "./controllers/adminController.js";
 import { createSummaryCache, loadDashboard } from "./dashboard.js";
 import { issuePass } from "./pass.js";
 
-const publicUser = (user) => ({
-  id: String(user._id),
-  firstName: user.firstName,
-  lastName: user.lastName,
-  role: user.role,
-  tier: user.tier,
-  membershipExpiresAt: user.membershipExpiresAt,
-});
+const publicUser = sanitizeUser;
 const objectId = (value) => mongoose.isObjectIdOrHexString(value);
 
 export function createApp(config) {
@@ -59,51 +57,12 @@ export function createApp(config) {
     });
   });
 
-  // Minimal login adapter for the initial shell. Registration/RBAC work can extend this router.
-  app.post(
-    "/api/auth/login",
-    rateLimit({
-      windowMs: 15 * 60_000,
-      limit: 30,
-      standardHeaders: "draft-8",
-      legacyHeaders: false,
-      handler: (req, res, next) =>
-        next(
-          apiError(429, "Too many sign-in attempts. Please try again later."),
-        ),
-    }),
-    async (req, res) => {
-      const { email, password } = req.body || {};
-      if (
-        typeof email !== "string" ||
-        typeof password !== "string" ||
-        email.length > 100 ||
-        password.length > 128
-      )
-        throw apiError(400, "Enter a valid email and password.");
-      const user = await User.findOne({ email: email.trim().toLowerCase() })
-        .select("+passwordHash")
-        .maxTimeMS(1000);
-      // Perform a hash comparison for unknown users as well, to avoid a fast account-existence signal.
-      const hash =
-        user?.passwordHash ||
-        "$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
-      const valid = await bcrypt.compare(password, hash);
-      if (!user || !valid || user.disabled)
-        throw apiError(401, "Email or password is incorrect.");
-      const token = jwt.sign({}, config.jwtSecret, {
-        algorithm: "HS256",
-        subject: String(user._id),
-        issuer: "gms",
-        audience: "gms-api",
-        expiresIn: "1h",
-      });
-      res.json({ token, user: publicUser(user) });
-    },
-  );
+  // REQ-SEC-01 / SV-08: Throttled login endpoint issuing signed HS256 JWT sessions
+  app.post("/api/auth/login", createLoginRateLimiter(), loginHandler(config));
 
+  // All downstream /api routes require valid JWT session token
   app.use("/api", authenticate(config));
-  app.get("/api/me", (req, res) => res.json({ user: publicUser(req.user) }));
+  app.get("/api/me", getProfile);
   app.get("/api/dashboard", async (req, res) => {
     const data = await cached(`${req.user.role}:${req.user._id}`, () =>
       loadDashboard(req.user),
@@ -138,7 +97,7 @@ export function createApp(config) {
     },
   );
 
-  // Bounded read endpoints for the shell; mutations belong to the team's module issues.
+  // Admin-only endpoints mandated by REQ-SEC-02 and NFR-5
   app.get("/api/members", allowRoles("Admin"), async (req, res) => {
     const users = await User.find({ role: "Member", disabled: false })
       .sort({ _id: 1 })
@@ -148,6 +107,11 @@ export function createApp(config) {
       .maxTimeMS(1000);
     res.json({ items: users });
   });
+  app.post("/api/users/delete", allowRoles("Admin"), deleteUser);
+  app.delete("/api/users/delete/:id", allowRoles("Admin"), deleteUser);
+  app.get("/api/revenue/view", allowRoles("Admin"), getRevenue);
+
+  // Bounded read endpoints for the shell; mutations belong to the team's module issues.
   app.get("/api/classes", async (req, res) => {
     const filter = { status: "Open", startsAt: { $gte: new Date() } };
     if (req.user.role === "Trainer") filter.trainerId = req.user._id;
