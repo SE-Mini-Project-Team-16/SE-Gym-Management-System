@@ -2,8 +2,55 @@
 
 A centralized web application designed to manage gym operations, membership renewals, automate trainer and class scheduling, and track equipment maintenance lifecycles. This repository hosts the deliverables for the Software Engineering Mini-Project.
 
-**Project Status: Active Development (Sprint Planning Phase)**
-The system architecture, software requirements, and test plans have been baselined. The project backlog is established, and active codebase implementation is scheduled across upcoming agile sprints.
+**Project Status: Active Development**
+The initial MERN application implements issue [#1](https://github.com/SE-Mini-Project-Team-16/SE-Gym-Management-System/issues/1): a responsive React shell, JSON API gateway, dashboard summaries and signed digital entry passes. The remaining module issues are integration work for the team.
+
+## Run locally
+
+Requires Node.js 24 LTS (minimum 22.12) and npm. Run from the repository root:
+
+```sh
+npm ci
+cp server/.env.example server/.env
+```
+
+Edit `server/.env`: set `JWT_SECRET` and `PASS_SECRET` to **different**, random values of at least 32 characters. For example, generate each with `openssl rand -hex 32`. Never commit the environment file.
+
+Choose either a MongoDB 7+ / Atlas connection in `MONGODB_URI`, or set `DEMO_DATABASE=true` to use a temporary real MongoDB database. Demo mode downloads a local MongoDB binary on its first run, resets when the process exits, and is forbidden in production. Set `DEMO_PASSWORD` to a password between 12 and 72 characters for the demo accounts. No default passwords are included.
+
+```sh
+# With an external development MongoDB only: create/update demo fixtures.
+# Do not point the seed script at a shared database: it rewrites gym.test accounts/classes.
+npm run seed
+
+# Start API on 127.0.0.1:4000 and Vite on 127.0.0.1:5173.
+# In DEMO_DATABASE mode, fixtures are seeded automatically; skip npm run seed.
+npm run dev
+```
+
+Sign in with `member@gym.test`, `trainer@gym.test`, or `admin@gym.test` and your configured `DEMO_PASSWORD`. A browser reload requires signing in again: JWTs are kept in memory per the architecture specification.
+
+```sh
+npm test                 # MongoDB integration tests and React interaction tests
+npm run build            # Production frontend bundle
+npm start                # API serves client/dist on the same origin
+npm run test:performance # Local 1,000-member / 200-booking smoke benchmark
+```
+
+## Delivered behavior
+
+- Persistent sidebar and responsive layouts for mobile, tablet and desktop; global success/error toasts and accessible forms.
+- Dashboard, bounded read views for Members (Admin only), Bookings and Equipment, and upcoming classes. Booking/payment/ticket mutation workflows remain assigned to their respective module owners; the UI identifies this explicitly.
+- `GET /api/passes/me` issues a member-owned signed QR pass valid for at most 15 minutes, capped at the current membership expiry. Staff use `POST /api/passes/verify` or the verification screen to check it.
+- Pass issuance and verification always check the live account and membership, including disabled accounts and revoked/expired memberships. Pass tokens use a separate secret and audience from API sessions.
+- Dashboard queries run concurrently with bounded projections, database deadlines, compound indexes, and a bounded 10-second per-user cache that coalesces simultaneous requests. Membership/pass eligibility never uses that cache.
+- JSON-only API payloads, standard JSON errors, Helmet headers, login throttling, and production HTTPS redirection to a configured origin.
+
+The pass is a reusable short-lived membership credential, not a one-use attendance record or hardware integration. A saved QR expires at the same time as the on-screen pass. Refreshing and verifying require connectivity. No pass tokens are persisted in the browser or server cache.
+
+## Integration and deployment
+
+See [the API contract and deployment notes](docs/application.md) for model fields, module ownership, HTTPS setup, index creation, and staging acceptance checks. CI runs the integration/component suite and builds the frontend. The local benchmark is not a substitute for the test plan's 10-minute staging load test or 72-hour availability observation.
 
 ## Team 16
 
@@ -15,7 +62,7 @@ The system architecture, software requirements, and test plans have been baselin
 
 
 
-## Proposed Tech Stack
+## Tech Stack
 
 * **Frontend:** React (Vite), Tailwind CSS
 
