@@ -2,39 +2,25 @@ name: Application checks
 on: [push, pull_request]
 permissions:
   contents: read
-
+  
 jobs:
-  server-test:
+  test-and-build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./server
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
-          cache-dependency-path: ./server/package-lock.json
+          
       - run: npm ci
+      
       - uses: actions/cache@v4
         with:
           path: ~/.cache/mongodb-binaries
           key: mongodb-${{ runner.os }}-8.2
+          
       - run: npm test
-
-  client-build-and-test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./client
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: ./client/package-lock.json
-      - run: npm ci
-      - run: npm test
+      
       - run: npm run build
