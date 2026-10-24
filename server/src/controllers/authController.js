@@ -32,6 +32,80 @@ export function createLoginRateLimiter() {
   });
 }
 
+export function createRegistrationRateLimiter() {
+  return rateLimit({
+    windowMs: 15 * 60_000,
+    limit: 10,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    handler: (req, res, next) =>
+      next(
+        apiError(
+          429,
+          "Too many registration attempts. Please try again later.",
+        ),
+      ),
+  });
+}
+
+// REQ-1 / NFR-4: allowlist registration fields; never trust privilege fields.
+export async function registerHandler(req, res, next) {
+  try {
+    const { firstName, lastName, email, phoneNumber, password } =
+      req.body || {};
+    const validName = (value) =>
+      typeof value === "string" &&
+      value.trim().length > 0 &&
+      value.trim().length <= 50;
+    if (!validName(firstName) || !validName(lastName))
+      throw apiError(
+        400,
+        "First and last names must contain 1 to 50 characters.",
+      );
+    if (
+      typeof email !== "string" ||
+      email.trim().length > 100 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+    )
+      throw apiError(
+        400,
+        "Enter a valid email address of at most 100 characters.",
+      );
+    if (typeof phoneNumber !== "string" || !/^[0-9]{1,15}$/.test(phoneNumber))
+      throw apiError(400, "Enter a phone number containing 1 to 15 digits.");
+    if (
+      typeof password !== "string" ||
+      password.length < 12 ||
+      password.length > 64 ||
+      Buffer.byteLength(password, "utf8") > 72
+    )
+      throw apiError(
+        400,
+        "Use a password of 12 to 64 characters and at most 72 UTF-8 bytes.",
+      );
+
+    const user = await User.create({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.trim().toLowerCase(),
+      phoneNumber,
+      passwordHash: await bcrypt.hash(password, 12),
+      role: "Member",
+      tier: "Basic",
+      membershipExpiresAt: null,
+      disabled: false,
+    });
+    res.status(201).json({ user: sanitizeUser(user) });
+  } catch (error) {
+    // The unique email index also protects simultaneous registration attempts.
+    next(
+      error.code === 11000
+        ? apiError(409, "This email address is already registered.")
+        : error,
+    );
+  }
+}
+
 /**
  * REQ-SEC-01 / SV-01 / SV-03 / SV-08: User login handler.
  * Validates credentials, issues 1-hour HS256 JWT, strips mass assignment fields,

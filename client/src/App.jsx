@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { request } from "./api.js";
+import RegistrationForm from "./RegistrationForm.jsx";
 
 const date = (value) =>
   value
@@ -74,6 +75,8 @@ function Toasts({ toasts, dismiss }) {
 
 function Login({ onLogin, notify }) {
   const [busy, setBusy] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
   async function submit(event) {
     event.preventDefault();
     setBusy(true);
@@ -114,41 +117,64 @@ function Login({ onLogin, notify }) {
       </section>
       <section className="login-form">
         <div>
-          <span className="eyebrow">WELCOME BACK</span>
-          <h2>Good to see you.</h2>
-          <p>Sign in to your gym account to get started.</p>
-          <form onSubmit={submit}>
-            <label>
-              Email address
-              <input
-                name="email"
-                type="email"
-                placeholder="you@example.com"
-                required
-                autoComplete="username"
-                maxLength={100}
-              />
-            </label>
-            <label>
-              Password
-              <input
-                name="password"
-                type="password"
-                placeholder="Your password"
-                required
-                autoComplete="current-password"
-                maxLength={128}
-              />
-            </label>
-            <button className="primary" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in"}
-              <ArrowRight size={18} />
-            </button>
-          </form>
-          <p className="help">
-            Need an account or help signing in?
-            <br /> Contact your gym reception.
-          </p>
+          {registering ? (
+            <RegistrationForm
+              notify={notify}
+              onBack={() => setRegistering(false)}
+              onRegistered={(email) => {
+                setRegisteredEmail(email);
+                setRegistering(false);
+                notify("Account created. Sign in to get started.");
+              }}
+            />
+          ) : (
+            <>
+              <span className="eyebrow">WELCOME BACK</span>
+              <h2>Good to see you.</h2>
+              <p>Sign in to your gym account to get started.</p>
+              <form onSubmit={submit}>
+                <label>
+                  Email address
+                  <input
+                    name="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    required
+                    autoComplete="username"
+                    maxLength={100}
+                    defaultValue={registeredEmail}
+                  />
+                </label>
+                <label>
+                  Password
+                  <input
+                    name="password"
+                    type="password"
+                    placeholder="Your password"
+                    required
+                    autoComplete="current-password"
+                    maxLength={128}
+                  />
+                </label>
+                <button className="primary" disabled={busy}>
+                  {busy ? "Signing in…" : "Sign in"}
+                  <ArrowRight size={18} />
+                </button>
+              </form>
+              <p className="help">
+                New to the gym?{" "}
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => setRegistering(true)}
+                >
+                  Create an account
+                </button>
+                <br /> Contact your gym reception.
+              </p>
+            </>
+          )}
         </div>
       </section>
     </main>

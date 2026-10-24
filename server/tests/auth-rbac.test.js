@@ -27,7 +27,7 @@ const makeToken = (user, options = {}, secret = config.jwtSecret) =>
 beforeAll(async () => {
   db = await MongoMemoryServer.create({
     instance: {
-      args: ["--nounixsocket"],
+      args: process.platform === "win32" ? [] : ["--nounixsocket"],
     },
   });
   await mongoose.connect(db.getUri());

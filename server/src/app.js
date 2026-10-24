@@ -17,6 +17,8 @@ import {
   createLoginRateLimiter,
   getProfile,
   sanitizeUser,
+  registerHandler,
+  createRegistrationRateLimiter,
 } from "./controllers/authController.js";
 import { deleteUser, getRevenue } from "./controllers/adminController.js";
 import { createSummaryCache, loadDashboard } from "./dashboard.js";
@@ -59,6 +61,11 @@ export function createApp(config) {
 
   // REQ-SEC-01 / SV-08: Throttled login endpoint issuing signed HS256 JWT sessions
   app.post("/api/auth/login", createLoginRateLimiter(), loginHandler(config));
+  app.post(
+    "/api/auth/register",
+    createRegistrationRateLimiter(),
+    registerHandler,
+  );
 
   // All downstream /api routes require valid JWT session token
   app.use("/api", authenticate(config));

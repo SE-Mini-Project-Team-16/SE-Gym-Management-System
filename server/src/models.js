@@ -14,6 +14,13 @@ const userSchema = new Schema(
       unique: true,
     },
     passwordHash: { type: String, required: true, select: false },
+    // Optional on legacy accounts; required and validated by registration.
+    phoneNumber: {
+      type: String,
+      maxlength: 15,
+      match: /^[0-9]{1,15}$/,
+      select: false,
+    },
     role: {
       type: String,
       enum: ["Admin", "Trainer", "Member"],
