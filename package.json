@@ -14,6 +14,9 @@
     "build": "npm run build -w client",
     "start": "npm start -w server",
     "seed": "npm run seed -w server",
+    "backup": "npm run backup -w server",
+    "restore": "npm run restore -w server",
+    "backup:verify": "npm run backup:verify -w server",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:performance": "node server/scripts/benchmark.js"
