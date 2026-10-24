@@ -37,6 +37,9 @@ npm test                 # MongoDB integration tests and React interaction tests
 npm run build            # Production frontend bundle
 npm start                # API serves client/dist on the same origin
 npm run test:performance # Local 1,000-member / 200-booking smoke benchmark
+npm run backup           # Create timestamped database backup snapshot
+npm run restore          # Restore database from snapshot with verification
+npm run backup:verify    # Verify SHA-256 integrity of latest snapshot
 ```
 
 ## Delivered behavior

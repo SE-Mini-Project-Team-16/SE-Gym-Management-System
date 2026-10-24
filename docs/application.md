@@ -81,6 +81,28 @@ This creates declared indexes without dropping existing ones. Production disable
 
 The development listener uses loopback HTTP intentionally. External HTTPS, certificates, Atlas credentials, daily backups and production uptime require deployment work outside these issues.
 
+### Automated Database Backups & Restore — NFR-2 / TC-REL-01 / ST-07 / SV-10
+
+The system provides an automated, self-contained database backup and recovery job in `server/src/backupJob.js` with CLI commands in `server/scripts/backupJob.js`. It requires no external host binaries (e.g. `mongodump`), functioning across Linux, macOS, Windows, CI runners, and cloud database instances.
+
+1. **Snapshot Structure**:
+   - Each backup generates an isolated snapshot directory: `backups/snapshot-<ISO-TIMESTAMP>/`.
+   - Collections are exported to compressed, canonical extended JSON archives (`<collection>.json.gz`) using `bson.EJSON` to preserve BSON data types (`ObjectId`, `Date`, etc.).
+   - Collection indexes are extracted and recorded in `metadata.json` for faithful recreation during restore operations.
+   - Each collection archive has a SHA-256 integrity checksum recorded in `metadata.json`, alongside an overall combined snapshot checksum.
+2. **Access Control & Safe Storage (SV-10)**:
+   - The backup directory root defaults to `./backups` (configurable via `BACKUP_DIR`).
+   - Snapshot directories and files are written with restricted permissions (`0700` directory / `0600` file modes).
+   - The directory is placed outside web server document roots (`client/dist` and `client/public`), and is ignored by git (`.gitignore`).
+3. **Automated Pruning & Retention**:
+   - Older snapshots exceeding `BACKUP_RETENTION_DAYS` (default 7 days) are automatically pruned on each backup run.
+   - The most recent snapshot is never pruned regardless of age to avoid empty backup states.
+4. **Commands**:
+   - `npm run backup`: Creates an immediate timestamped backup snapshot with SHA-256 verification and retention cleanup.
+   - `npm run restore [-- <path>]`: Restores collections and indexes to the database, verifying pre-restore checksums and post-restore record counts.
+   - `npm run backup:verify [-- <path>]`: Verifies SHA-256 checksums across all snapshot archives without touching the live database.
+   - `npm run backup:schedule -w server`: Runs the automated daily backup scheduler daemon (default 24h interval via `BACKUP_INTERVAL_HOURS`).
+
 ## Requirement checks and limits
 
 | Requirement | Delivered checks | Remaining staging acceptance |
@@ -88,8 +110,10 @@ The development listener uses loopback HTTP intentionally. External HTTPS, certi
 | UI-1 | React interaction tests for login errors, navigation, pass rendering and expired-state behavior; manual browser sizes 375, 768, 1366 | Latest Firefox/Safari compatibility and team UAT |
 | NFR-6 | Integration tests for JSON/error contracts, media-type enforcement, headers and trusted-proxy HTTPS redirection | Certificate/TLS 1.2+ test on deployed hostname |
 | NFR-1 | Real-MongoDB integration suite, bounded cache tests, and `npm run test:performance` with 1,000 members / 200 bookings / 50 simultaneous users | `tests/performance/dashboard.js`: k6 2-minute warm-up + 10-minute steady state, p95 < 1.5 s, errors < 1% |
+| NFR-2 | Vitest suite (`server/tests/backup.test.js`) verifying daily snapshot creation, clean database restore, checksum tampering rejection, retention pruning, and scheduled execution (TC-REL-01, ST-07, SV-10) | Execution of daily backup job on staging Atlas cluster and quarterly disaster recovery drill |
 | NFR-3 | Active/expired/disabled/tampered/revoked pass tests; session/pass separation; automatic UI refresh | `server/scripts/monitor-pass.js`: 72-hour staging observation, availability ≥ 99.5% |
 
 For k6, provide HTTPS `BASE_URL` and `SESSION_TOKENS` as an environment-only JSON array of 50 distinct signed-in sessions, against dedicated seeded staging data. Run `k6 run tests/performance/dashboard.js`; keep tokens out of source, command history, and logs. Sessions last one hour, longer than this 12-minute test. The native smoke benchmark is shorter and is not the staging acceptance result.
 
 For the availability monitor, provide HTTPS `BASE_URL`, `MONITOR_EMAIL` and `MONITOR_PASSWORD` via your environment/secret manager, using a dedicated Member with membership lasting beyond the entire observation. Run `node server/scripts/monitor-pass.js`. The monitor refreshes expired login sessions, samples once a minute, and logs only time/status/counts/availability. Default duration is 72 hours. Never treat a short local run as proof of the 72-hour target.
+
