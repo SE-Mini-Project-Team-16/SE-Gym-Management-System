@@ -3,7 +3,7 @@
 A centralized web application designed to manage gym operations, membership renewals, automate trainer and class scheduling, and track equipment maintenance lifecycles. This repository hosts the deliverables for the Software Engineering Mini-Project.
 
 **Project Status: Active Development**
-The initial MERN application implements issue [#1](https://github.com/SE-Mini-Project-Team-16/SE-Gym-Management-System/issues/1): a responsive React shell, JSON API gateway, dashboard summaries and signed digital entry passes. The remaining module issues are integration work for the team.
+The MERN application includes a responsive React shell, JSON API gateway, dashboard summaries, signed digital entry passes, and member registration with password hashing ([issue #2](https://github.com/SE-Mini-Project-Team-16/SE-Gym-Management-System/issues/2)). The remaining module issues are integration work for the team.
 
 ## Run locally
 
@@ -30,6 +30,8 @@ npm run dev
 
 Sign in with `member@gym.test`, `trainer@gym.test`, or `admin@gym.test` and your configured `DEMO_PASSWORD`. A browser reload requires signing in again: JWTs are kept in memory per the architecture specification.
 
+To register, choose **Create an account** on the sign-in screen. Enter your first and last names, a unique email, a phone number of 1 to 15 digits, and a password of 12 to 64 characters (at most 72 UTF-8 bytes). After registration, sign in with your new credentials. New accounts always start as Members on the Basic tier, without an active membership; reception/payment activation is a separate workflow. Registration cannot grant staff access or membership benefits.
+
 ```sh
 npm test                 # MongoDB integration tests and React interaction tests
 npm run build            # Production frontend bundle
@@ -45,6 +47,7 @@ npm run test:performance # Local 1,000-member / 200-booking smoke benchmark
 - Pass issuance and verification always check the live account and membership, including disabled accounts and revoked/expired memberships. Pass tokens use a separate secret and audience from API sessions.
 - Dashboard queries run concurrently with bounded projections, database deadlines, compound indexes, and a bounded 10-second per-user cache that coalesces simultaneous requests. Membership/pass eligibility never uses that cache.
 - JSON-only API payloads, standard JSON errors, Helmet headers, login throttling, and production HTTPS redirection to a configured origin.
+- Public, separately throttled `POST /api/auth/register`, normalized unique emails, salted bcrypt cost-12 password hashes, and an accessible registration form with confirmation and retryable errors. Passwords, hashes, and phone numbers are excluded from public user responses.
 
 The pass is a reusable short-lived membership credential, not a one-use attendance record or hardware integration. A saved QR expires at the same time as the on-screen pass. Refreshing and verifying require connectivity. No pass tokens are persisted in the browser or server cache.
 

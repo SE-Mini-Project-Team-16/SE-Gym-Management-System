@@ -4,13 +4,13 @@
 
 `client/` is React + Vite + Tailwind. `server/src/app.js` builds the Express app independently of the network listener, so Supertest exercises the actual middleware/routes. `server/src/server.js` owns MongoDB connection, startup, and graceful shutdown.
 
-The minimal login adapter and authentication/role middleware make this foundation independently runnable. Issue #3 can extend or extract them; issue #2 owns registration and registration-time bcrypt hashing. Do not add alternate token formats. No registration or user mutation endpoint is implemented here. The seeded hashes use bcrypt cost 12.
+Issue #2 adds registration and registration-time bcrypt hashing to the existing issue #3 login and authentication/role middleware. Registration returns a public user record; members then use the existing login endpoint and session JWT format. Registered and seeded passwords use bcrypt cost 12.
 
 Shared Mongoose models live in `server/src/models.js`:
 
 | Model | Integration fields |
 | --- | --- |
-| User | `firstName`, `lastName`, normalized unique `email`, hidden `passwordHash`, `role` (`Admin`, `Trainer`, `Member`), `tier` (`Basic`, `Premium`, `VIP`), `membershipExpiresAt`, `disabled` |
+| User | `firstName`, `lastName`, normalized unique `email`, hidden `passwordHash` and `phoneNumber`, `role` (`Admin`, `Trainer`, `Member`), `tier` (`Basic`, `Premium`, `VIP`), `membershipExpiresAt`, `disabled` |
 | GymClass | `name`, `trainerId`, `startsAt`, `durationMinutes`, `capacity`, `availableSlots`, `status` (`Open`, `Cancelled`) |
 | Booking | `memberId`, `classId`, `status` (`Active`, `Cancelled`) |
 | Equipment | unique `inventoryId`, `name`, `category`, `status` (`Available`, `Under Maintenance`) |
@@ -19,11 +19,12 @@ Issue #4's verified payment handler must update `User.membershipExpiresAt`; the 
 
 ## JSON API
 
-Same-origin `/api` avoids exposing permissive CORS. All requests with bodies must use `Content-Type: application/json` (16 KB maximum). Successful reads return JSON with `Cache-Control: no-store`. API errors use `{ "error": true, "message": "…", "code": 400 }`. Login and health are public; all other API routes require `Authorization: Bearer <session>`.
+Same-origin `/api` avoids exposing permissive CORS. All requests with bodies must use `Content-Type: application/json` (16 KB maximum). API responses use `Cache-Control: no-store`. API errors use `{ "error": true, "message": "…", "code": 400 }`. Registration, login and health are public; all other API routes require `Authorization: Bearer <session>`.
 
 | Method | Route | Access | Response |
 | --- | --- | --- | --- |
 | GET | `/api/health` | Public readiness | `status`, `database`; 503 when disconnected |
+| POST | `/api/auth/register` | Public, 10 attempts per IP per 15 minutes | JSON registration fields → 201 `{ user }`; 400 invalid fields, 409 duplicate email, 429 throttled |
 | POST | `/api/auth/login` | Public, throttled | JSON `email`, `password` → `token`, `user` |
 | GET | `/api/me` | Signed in | `user` |
 | GET | `/api/dashboard` | Signed in | `user`, role-scoped `stats`, at most 5 `upcomingClasses` |
@@ -37,6 +38,18 @@ Same-origin `/api` avoids exposing permissive CORS. All requests with bodies mus
 | POST | `/api/passes/verify` | Admin / Trainer | JSON `token` → `valid: true`, `member`, or 403 |
 
 No endpoint accepts a caller-provided member ID for pass ownership. Session JWTs require HS256, issuer `gms`, audience `gms-api`, and a valid MongoDB user ID in `sub`. Roles are read from the database on every request, not trusted from client state. Disabled/deleted accounts cannot continue using old sessions.
+
+### Registration contract — REQ-1 / NFR-4
+
+Send `firstName`, `lastName`, `email`, `phoneNumber`, and `password` as strings. Names are trimmed and must contain 1–50 characters. Email is trimmed, lowercased, checked for basic email syntax, and limited to 100 characters after trimming. Phone numbers preserve leading zeros and contain 1–15 ASCII digits. Passwords are used exactly as supplied: 12–64 JavaScript string code units and at most 72 UTF-8 bytes, avoiding bcrypt truncation. The UI also requires matching password confirmation; confirmation is never sent to the server.
+
+The handler allowlists these five fields. Extra fields, including `role`, `tier`, `membershipExpiresAt`, `disabled`, caller-supplied IDs and `passwordHash`, are ignored. Every self-registered account starts with `role: Member`, `tier: Basic`, `disabled: false`, and no membership expiry. Tier selection and payment activation remain separate trusted workflows. No session token is issued at registration; sign in through `/api/auth/login` afterward.
+
+Passwords are salted and hashed asynchronously with bcrypt cost 12 before the user document is inserted. Responses use the shared user sanitizer and never expose passwords, hashes, or phone numbers. Phone numbers are hidden by default in model queries and remain optional for existing/seeded accounts; the registration endpoint requires them for new accounts. This avoids making legacy users invalid.
+
+The existing **unique email database index** is the source of truth for duplicate detection, including concurrent requests. Duplicate inserts return a standard 409 error without changing the original account. Before accepting production registration traffic, run `npm run indexes -w server` to create the index; existing duplicate emails must be resolved if index creation fails. Registration and login have independent in-memory rate limiters. Deployments with multiple API instances should provide a shared limiter store or enforce a global limit at the trusted proxy.
+
+Registration does not activate a membership, implement booking/cancellation, or change the existing staff provisioning flow. The current UI escapes names when displaying them; clients must continue treating user-supplied names as text.
 
 Entry pass JWTs use `PASS_SECRET`, audience `gms-entry`, `kind: entry-pass`, member ID in `sub`, and a maximum 900-second lifetime. A pass cannot act as an API session. Staff verification repeats the live eligibility check; changing the membership expiry, disabling/deleting the user, or changing their role immediately rejects an existing pass. Every instance must share the same secrets. Rotating `PASS_SECRET` invalidates all issued passes.
 
