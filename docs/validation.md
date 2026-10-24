@@ -1,5 +1,16 @@
 # Local validation
 
+## Issue #5 — 24 October 2026
+
+Configure Automated Daily Database Backups (NFR-2, TC-REL-01, ST-07, SV-10), validated on Node.js 24 with a temporary MongoDB 8.2 database.
+
+| Check | Result |
+| --- | --- |
+| Full Vitest suite | 105 tests passed across 7 test files |
+| Backup & Recovery test suite (`backup.test.js`) | 7 passed: snapshot creation with all collections/indexes, clean database full restore with record count & sample verification, SHA-256 tampering detection, safe permission enforcement, automatic retention pruning, scheduled runner, and disconnected database error handling |
+| Production frontend bundle | Vite build passed (244ms) |
+| CLI Verification | `npm run backup`, `npm run restore`, and `npm run backup:verify` run cleanly via `server/scripts/backupJob.js` |
+
 ## Issue #2 — 24 October 2026
 
 Member registration and password hashing (REQ-1, NFR-4), validated on Windows with Node.js 24.22.1 and a real temporary MongoDB 8.2.6 database.
