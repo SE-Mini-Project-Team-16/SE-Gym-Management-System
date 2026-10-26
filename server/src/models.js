@@ -77,7 +77,36 @@ const equipmentSchema = new Schema(
 );
 equipmentSchema.index({ status: 1, inventoryId: 1 });
 
+const paymentOrderSchema = new Schema(
+  {
+    orderId: { type: String, required: true, unique: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    tier: { type: String, enum: ["Basic", "Premium", "VIP"], required: true },
+    amount: { type: Number, required: true },
+    currency: { type: String, enum: ["INR"], required: true },
+    status: { type: String, enum: ["created", "paid"], default: "created" },
+    paymentId: { type: String, default: null },
+  },
+  { timestamps: true },
+);
+
+// Stores only gateway references and the applied membership update; never card data.
+const paymentReceiptSchema = new Schema(
+  {
+    orderId: { type: String, required: true, unique: true },
+    paymentId: { type: String, required: true, unique: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    tier: { type: String, enum: ["Basic", "Premium", "VIP"], required: true },
+    amount: { type: Number, required: true },
+    currency: { type: String, required: true },
+    membershipExpiresAt: { type: Date, required: true },
+  },
+  { timestamps: true },
+);
+
 export const User = model("User", userSchema);
 export const GymClass = model("GymClass", classSchema);
 export const Booking = model("Booking", bookingSchema);
 export const Equipment = model("Equipment", equipmentSchema);
+export const PaymentOrder = model("PaymentOrder", paymentOrderSchema);
+export const PaymentReceipt = model("PaymentReceipt", paymentReceiptSchema);

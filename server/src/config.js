@@ -12,6 +12,18 @@ export function loadConfig(env = process.env) {
     throw new Error("Demo database is forbidden in production.");
   if (production && !/^https:\/\/[^/]+$/.test(env.PUBLIC_ORIGIN || ""))
     throw new Error("PUBLIC_ORIGIN must be an HTTPS origin in production.");
+  const paymentMode = env.PAYMENT_MODE || (production ? "razorpay" : "demo");
+  if (!["demo", "razorpay"].includes(paymentMode))
+    throw new Error("PAYMENT_MODE must be demo or razorpay.");
+  if (production && paymentMode === "demo")
+    throw new Error("Demo payments are forbidden in production.");
+  const membershipDurationDays = Number(env.MEMBERSHIP_DURATION_DAYS || 30);
+  if (
+    !Number.isInteger(membershipDurationDays) ||
+    membershipDurationDays < 1 ||
+    membershipDurationDays > 366
+  )
+    throw new Error("MEMBERSHIP_DURATION_DAYS must be an integer between 1 and 366.");
   return {
     production,
     port: Number(env.PORT || 4000),
@@ -20,5 +32,10 @@ export function loadConfig(env = process.env) {
     passSecret: env.PASS_SECRET,
     publicOrigin: env.PUBLIC_ORIGIN,
     trustProxy: env.TRUST_PROXY === "1",
+    paymentMode,
+    razorpayKeyId: env.RAZORPAY_KEY_ID,
+    razorpayKeySecret: env.RAZORPAY_KEY_SECRET,
+    razorpayWebhookSecret: env.RAZORPAY_WEBHOOK_SECRET,
+    membershipDurationDays,
   };
 }

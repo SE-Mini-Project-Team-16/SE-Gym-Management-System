@@ -1,10 +1,24 @@
 import mongoose from "mongoose";
-import { User, GymClass, Booking, Equipment } from "../src/models.js";
+import {
+  User,
+  GymClass,
+  Booking,
+  Equipment,
+  PaymentOrder,
+  PaymentReceipt,
+} from "../src/models.js";
 
 if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is required.");
 try {
   await mongoose.connect(process.env.MONGODB_URI);
-  for (const Model of [User, GymClass, Booking, Equipment])
+  for (const Model of [
+    User,
+    GymClass,
+    Booking,
+    Equipment,
+    PaymentOrder,
+    PaymentReceipt,
+  ])
     await Model.createIndexes();
   console.log("Dashboard and list indexes created.");
 } finally {

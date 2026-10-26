@@ -15,7 +15,7 @@ Shared Mongoose models live in `server/src/models.js`:
 | Booking | `memberId`, `classId`, `status` (`Active`, `Cancelled`) |
 | Equipment | unique `inventoryId`, `name`, `category`, `status` (`Available`, `Under Maintenance`) |
 
-Issue #4's verified payment handler must update `User.membershipExpiresAt`; the pass becomes available on the next request with no cache invalidation. All timestamps are UTC instants; the UI formats them in the browser's timezone. Issues #6/#7 own booking and cancellation mutations; issue #8 owns inventory/ticket mutations. Add new routers before the authenticated API 404 handler. Counts can lag writes by at most 10 seconds; explicitly invalidate or remove the summary cache if stronger consistency is needed.
+Issue #4 implements membership renewal using a clearly labeled demo checkout in local development and Razorpay Standard Checkout when explicitly configured. Successful renewal updates `User.tier` and extends `User.membershipExpiresAt`; the pass becomes available on the next request with no cache invalidation. All timestamps are UTC instants; the UI formats them in the browser's timezone. Issues #6/#7 own booking and cancellation mutations; issue #8 owns inventory/ticket mutations. Add new routers before the authenticated API 404 handler. Counts can lag writes by at most 10 seconds; explicitly invalidate or remove the summary cache if stronger consistency is needed.
 
 ## JSON API
 
@@ -36,6 +36,11 @@ Same-origin `/api` avoids exposing permissive CORS. All requests with bodies mus
 | GET | `/api/equipment` | Signed in | `items`, first 50 inventory IDs (available only for Member) |
 | GET | `/api/passes/me` | Active Member | `token`, `expiresAt`, `member` display metadata |
 | POST | `/api/passes/verify` | Admin / Trainer | JSON `token` → `valid: true`, `member`, or 403 |
+| POST | `/api/payments/orders` | Member | JSON `tier` (`Basic`, `Premium`, `VIP`) → server-created demo or Razorpay order |
+| POST | `/api/payments/verify` | Member | Demo result (`orderId`, `outcome`) or Razorpay callback → ownership and payment verification |
+| POST | `/api/payments/webhook` | Razorpay signature | Raw `payment.captured` event; duplicate captured payments are idempotent |
+
+`PAYMENT_MODE` defaults to `demo` outside production and is rejected in production. The demo checkout displays a no-real-payment notice, collects no payment details, and offers simulated success/failure; only the success action updates the member. To use Razorpay instead, set `PAYMENT_MODE=razorpay` and provide `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`. Existing tier prices are INR (₹30/₹60/₹100; values sent to Razorpay are paise). The browser Checkout callback is verified with the server-created order ID, then the server fetches the payment and requires `status: captured`, matching order, amount and currency. `RAZORPAY_WEBHOOK_SECRET` verifies the exact raw body for `payment.captured` events. Both confirmation paths use a MongoDB transaction and unique order/payment receipts, so retries cannot extend expiry twice. `MEMBERSHIP_DURATION_DAYS` defaults to 30. MongoDB must support transactions (Atlas or replica set); `DEMO_DATABASE=true` starts a single-node in-memory replica set. Receipts store gateway references, amount/currency, tier, and applied expiry; card details are never stored or logged. For a public Razorpay deployment, configure `/api/payments/webhook` and subscribe to `payment.captured`.
 
 No endpoint accepts a caller-provided member ID for pass ownership. Session JWTs require HS256, issuer `gms`, audience `gms-api`, and a valid MongoDB user ID in `sub`. Roles are read from the database on every request, not trusted from client state. Disabled/deleted accounts cannot continue using old sessions.
 

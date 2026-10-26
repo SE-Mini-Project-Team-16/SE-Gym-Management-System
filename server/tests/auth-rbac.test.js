@@ -366,7 +366,7 @@ describe("REQ-SEC-02 / NFR-5 / SV-02: RBAC Matrix and Protected Admin Routes (TC
     expect(adminRes.body).toMatchObject({
       status: "success",
       revenue: {
-        currency: "USD",
+        currency: "INR",
         breakdown: expect.any(Object),
       },
     });

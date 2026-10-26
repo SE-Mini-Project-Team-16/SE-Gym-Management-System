@@ -23,16 +23,31 @@ import {
 import { deleteUser, getRevenue } from "./controllers/adminController.js";
 import { createSummaryCache, loadDashboard } from "./dashboard.js";
 import { issuePass } from "./pass.js";
+import {
+  createRazorpayOrder,
+  razorpayWebhook,
+  verifyRazorpayPayment,
+} from "./payments.js";
 
 const publicUser = sanitizeUser;
 const objectId = (value) => mongoose.isObjectIdOrHexString(value);
 
 export function createApp(config) {
   const app = express();
+  app.locals.paymentConfig = config;
   const cached = createSummaryCache();
   app.disable("x-powered-by");
   if (config.trustProxy) app.set("trust proxy", 1);
-  app.use(helmet());
+  const cspDirectives = helmet.contentSecurityPolicy.getDefaultDirectives();
+  cspDirectives["script-src"].push("https://checkout.razorpay.com");
+  cspDirectives["frame-src"] = [
+    "'self'",
+    "https://api.razorpay.com",
+    "https://checkout.razorpay.com",
+  ];
+  cspDirectives["connect-src"] = ["'self'", "https://api.razorpay.com"];
+  cspDirectives["img-src"].push("https://*.razorpay.com");
+  app.use(helmet({ contentSecurityPolicy: { directives: cspDirectives } }));
   app.use((req, res, next) => {
     if (config.production && !req.secure)
       return res
@@ -50,6 +65,12 @@ export function createApp(config) {
       return next(apiError(415, "Send request data as application/json."));
     next();
   });
+  // Razorpay signs the exact raw JSON bytes; this must precede express.json().
+  app.post(
+    "/api/payments/webhook",
+    express.raw({ type: "application/json", limit: "64kb" }),
+    razorpayWebhook(config),
+  );
   app.use(express.json({ limit: "16kb", strict: true }));
   app.get("/api/health", (req, res) => {
     const ready = mongoose.connection.readyState === 1;
@@ -70,6 +91,16 @@ export function createApp(config) {
   // All downstream /api routes require valid JWT session token
   app.use("/api", authenticate(config));
   app.get("/api/me", getProfile);
+  app.post(
+    "/api/payments/orders",
+    allowRoles("Member"),
+    createRazorpayOrder,
+  );
+  app.post(
+    "/api/payments/verify",
+    allowRoles("Member"),
+    verifyRazorpayPayment,
+  );
   app.get("/api/dashboard", async (req, res) => {
     const data = await cached(`${req.user.role}:${req.user._id}`, () =>
       loadDashboard(req.user),

@@ -502,6 +502,124 @@ h3 {
   color: #364f3a;
   margin-top: 4px;
 }
+.membership-tier {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin: 0 0 12px;
+  color: #526453;
+  font-size: 11px;
+}
+.membership-tier select {
+  width: 100%;
+  border: 1px solid #d5ddce;
+  border-radius: 6px;
+  background: #fff;
+  color: #264d3b;
+  padding: 10px;
+  font: inherit;
+}
+.membership-pay {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.demo-checkout-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(15 24 18 / 58%);
+}
+.demo-checkout {
+  width: min(100%, 440px);
+  padding: 26px;
+  border: 1px solid #e2e8dc;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 22%);
+}
+.demo-checkout-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #36543a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.demo-checkout-close {
+  margin-left: auto;
+  padding: 0 4px;
+  color: #718071;
+  background: transparent;
+  font-size: 24px;
+}
+.demo-checkout-tag {
+  display: inline-block;
+  margin-top: 28px;
+  padding: 7px 9px;
+  border-radius: 4px;
+  background: #fff3d9;
+  color: #79551b;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.demo-checkout h2 {
+  margin: 16px 0 8px;
+  color: #273b2b;
+  font-size: 22px;
+}
+.demo-checkout-copy {
+  color: #667367;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.demo-checkout-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 22px 0 14px;
+  padding: 16px 0;
+  border-top: 1px solid #e5e9e2;
+  border-bottom: 1px solid #e5e9e2;
+  color: #526453;
+  font-size: 12px;
+}
+.demo-checkout-summary strong {
+  color: #263c2b;
+  font-size: 18px;
+}
+.demo-checkout-methods {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.demo-checkout-methods span {
+  flex: 1;
+  padding: 10px 4px;
+  border: 1px solid #dce3d8;
+  border-radius: 6px;
+  color: #526453;
+  text-align: center;
+  font-size: 10px;
+}
+.demo-checkout-pay,
+.demo-checkout-fail,
+.demo-checkout-cancel {
+  width: 100%;
+  justify-content: center;
+}
+.demo-checkout-pay,
+.demo-checkout-fail {
+  margin-top: 8px;
+}
+.demo-checkout-cancel {
+  margin-top: 12px;
+}
 .membership > .secondary {
   width: 100%;
   margin-top: auto;
