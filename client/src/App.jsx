@@ -213,9 +213,48 @@ function Badge({ children, muted }) {
   return <span className={`badge ${muted ? "muted" : ""}`}>{children}</span>;
 }
 
-function Dashboard({ data, navigate, refresh, busy }) {
+function loadRazorpayCheckout() {
+  if (window.Razorpay) return Promise.resolve(window.Razorpay);
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () =>
+      window.Razorpay
+        ? resolve(window.Razorpay)
+        : reject(new Error("Razorpay Checkout could not be loaded."));
+    script.onerror = () =>
+      reject(new Error("Could not connect to Razorpay Checkout."));
+    document.body.appendChild(script);
+  });
+}
+
+function Dashboard({ data, navigate, refresh, busy, api, notify }) {
   const user = data.user;
+  const [selectedTier, setSelectedTier] = useState(user.tier);
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [demoOrder, setDemoOrder] = useState(null);
   const active = new Date(user.membershipExpiresAt).getTime() > Date.now();
+  async function submitDemoPayment(outcome) {
+    setPaymentBusy(true);
+    try {
+      const result = await api("/payments/verify", {
+        method: "POST",
+        body: JSON.stringify({ orderId: demoOrder.orderId, outcome }),
+      });
+      setDemoOrder(null);
+      if (result.status === "paid") {
+        notify("Demo payment complete. Membership updated; no money was charged.");
+        await refresh();
+      } else {
+        notify("Demo payment failed. Membership was not changed.", "error");
+      }
+    } catch (error) {
+      notify(error.message, "error");
+    } finally {
+      setPaymentBusy(false);
+    }
+  }
   const metrics =
     user.role === "Admin"
       ? [
@@ -347,6 +386,77 @@ function Dashboard({ data, navigate, refresh, busy }) {
               {active ? "Valid until" : "Expiry date"}
               <strong>{date(user.membershipExpiresAt)}</strong>
             </p>
+            <label className="membership-tier">
+              Membership tier
+              <select
+                value={selectedTier}
+                onChange={(event) => setSelectedTier(event.target.value)}
+              >
+                <option value="Basic">Basic · ₹30 / month</option>
+                <option value="Premium">Premium · ₹60 / month</option>
+                <option value="VIP">VIP · ₹100 / month</option>
+              </select>
+            </label>
+            <button
+              className="lime-button membership-pay"
+              disabled={paymentBusy}
+              onClick={async () => {
+                setPaymentBusy(true);
+                try {
+                  const checkout = await api("/payments/orders", {
+                    method: "POST",
+                    body: JSON.stringify({ tier: selectedTier }),
+                  });
+                  if (checkout.demo) {
+                    setDemoOrder(checkout);
+                    setPaymentBusy(false);
+                    return;
+                  }
+                  const Razorpay = await loadRazorpayCheckout();
+                  const payment = new Razorpay({
+                    key: checkout.keyId,
+                    amount: checkout.amount,
+                    currency: checkout.currency,
+                    name: "Gym Management System",
+                    description: `${checkout.tier} membership · 30 days`,
+                    order_id: checkout.orderId,
+                    theme: { color: "#8da65a" },
+                    handler: async (response) => {
+                      try {
+                        const result = await api("/payments/verify", {
+                          method: "POST",
+                          body: JSON.stringify(response),
+                        });
+                        if (result.status === "paid") {
+                          notify("Payment confirmed. Your membership is active.");
+                          await refresh();
+                        } else {
+                          notify(
+                            "Payment is processing. Your membership updates after capture.",
+                          );
+                        }
+                      } catch (error) {
+                        notify(error.message, "error");
+                      } finally {
+                        setPaymentBusy(false);
+                      }
+                    },
+                    modal: { ondismiss: () => setPaymentBusy(false) },
+                  });
+                  payment.on("payment.failed", () => {
+                    notify("Payment failed. Your membership was not changed.", "error");
+                    setPaymentBusy(false);
+                  });
+                  payment.open();
+                } catch (error) {
+                  notify(error.message, "error");
+                  setPaymentBusy(false);
+                }
+              }}
+            >
+              {paymentBusy ? "Opening secure checkout…" : "Renew membership"}
+              <ArrowRight size={16} />
+            </button>
             <button
               className="secondary"
               onClick={() => navigate("Entry pass")}
@@ -373,6 +483,67 @@ function Dashboard({ data, navigate, refresh, busy }) {
           </section>
         )}
       </div>
+      {demoOrder && (
+        <div className="demo-checkout-backdrop">
+          <section
+            className="demo-checkout"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="demo-checkout-title"
+          >
+            <div className="demo-checkout-brand">
+              <Dumbbell size={19} />
+              <span>GYM MANAGEMENT SYSTEM</span>
+              <button
+                className="demo-checkout-close"
+                aria-label="Close demo checkout"
+                onClick={() => setDemoOrder(null)}
+                disabled={paymentBusy}
+              >
+                ×
+              </button>
+            </div>
+            <span className="demo-checkout-tag">DEMO CHECKOUT · NO REAL PAYMENT</span>
+            <h2 id="demo-checkout-title">Confirm your membership</h2>
+            <p className="demo-checkout-copy">
+              This mock checkout is for project demonstration only. It will not
+              collect payment details or charge money.
+            </p>
+            <div className="demo-checkout-summary">
+              <span>{demoOrder.tier} membership · 30 days</span>
+              <strong>₹{(demoOrder.amount / 100).toFixed(2)}</strong>
+            </div>
+            <div className="demo-checkout-methods" aria-label="Demo payment methods">
+              <span>UPI</span>
+              <span>Card</span>
+              <span>Net banking</span>
+            </div>
+            <button
+              className="lime-button demo-checkout-pay"
+              disabled={paymentBusy}
+              onClick={() => submitDemoPayment("success")}
+            >
+              {paymentBusy
+                ? "Processing demo…"
+                : `Simulate successful payment · ₹${(demoOrder.amount / 100).toFixed(2)}`}
+            </button>
+            <button
+              className="secondary demo-checkout-fail"
+              disabled={paymentBusy}
+              onClick={() => submitDemoPayment("failure")}
+            >
+              Simulate failed payment
+            </button>
+            <button
+              className="text-button demo-checkout-cancel"
+              disabled={paymentBusy}
+              onClick={() => setDemoOrder(null)}
+            >
+              Cancel
+            </button>
+          </section>
+        </div>
+      )}
     </>
   );
 }
@@ -967,6 +1138,8 @@ export default function App() {
                     navigate={navigate}
                     refresh={refreshDashboard}
                     busy={busy}
+                    api={api}
+                    notify={notify}
                   />
                 ) : (
                   <Loading />

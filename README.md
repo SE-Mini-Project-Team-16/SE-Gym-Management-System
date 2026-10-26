@@ -16,6 +16,8 @@ cp server/.env.example server/.env
 
 Edit `server/.env`: set `JWT_SECRET` and `PASS_SECRET` to **different**, random values of at least 32 characters. For example, generate each with `openssl rand -hex 32`. Never commit the environment file.
 
+Local development defaults to `PAYMENT_MODE=demo`: checkout is clearly marked as a simulation, collects no payment details, and lets you simulate success or failure. It updates membership only in the local project database; no money is charged. For an authorized Razorpay integration, set `PAYMENT_MODE=razorpay`, provide `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`, and configure `RAZORPAY_WEBHOOK_SECRET` for the deployed `payment.captured` webhook. The Razorpay order is created server-side using the sample INR tier amounts (₹30/₹60/₹100). Memberships extend by 30 days by default (`MEMBERSHIP_DURATION_DAYS`). The database must support transactions (Atlas or a replica set). Demo payments are forbidden in production. Do not collect or store card details in GMS.
+
 Choose either a MongoDB 7+ / Atlas connection in `MONGODB_URI`, or set `DEMO_DATABASE=true` to use a temporary real MongoDB database. Demo mode downloads a local MongoDB binary on its first run, resets when the process exits, and is forbidden in production. Set `DEMO_PASSWORD` to a password between 12 and 72 characters for the demo accounts. No default passwords are included.
 
 ```sh
@@ -45,7 +47,7 @@ npm run backup:verify    # Verify SHA-256 integrity of latest snapshot
 ## Delivered behavior
 
 - Persistent sidebar and responsive layouts for mobile, tablet and desktop; global success/error toasts and accessible forms.
-- Dashboard, bounded read views for Members (Admin only), Bookings and Equipment, and upcoming classes. Booking/payment/ticket mutation workflows remain assigned to their respective module owners; the UI identifies this explicitly.
+- Dashboard, bounded read views for Members (Admin only), Bookings and Equipment, and upcoming classes. Member renewals use a labeled demo checkout locally or Razorpay Standard Checkout when configured; captured payments and duplicate callbacks/webhooks do not extend membership twice.
 - `GET /api/passes/me` issues a member-owned signed QR pass valid for at most 15 minutes, capped at the current membership expiry. Staff use `POST /api/passes/verify` or the verification screen to check it.
 - Pass issuance and verification always check the live account and membership, including disabled accounts and revoked/expired memberships. Pass tokens use a separate secret and audience from API sessions.
 - Dashboard queries run concurrently with bounded projections, database deadlines, compound indexes, and a bounded 10-second per-user cache that coalesces simultaneous requests. Membership/pass eligibility never uses that cache.

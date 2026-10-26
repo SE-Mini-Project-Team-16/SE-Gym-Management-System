@@ -6,8 +6,8 @@ const config = loadConfig();
 mongoose.set("bufferCommands", false);
 let demo;
 if (process.env.DEMO_DATABASE === "true") {
-  const { MongoMemoryServer } = await import("mongodb-memory-server");
-  demo = await MongoMemoryServer.create();
+  const { MongoMemoryReplSet } = await import("mongodb-memory-server");
+  demo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   config.mongoUri = demo.getUri();
 }
 await mongoose.connect(config.mongoUri, {

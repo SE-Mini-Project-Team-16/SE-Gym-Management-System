@@ -58,7 +58,7 @@ export async function getRevenue(req, res, next) {
       status: "success",
       revenue: {
         totalRevenue,
-        currency: "USD",
+        currency: "INR",
         breakdown,
       },
     });
