@@ -58,6 +58,15 @@ const bookingSchema = new Schema(
   { timestamps: true },
 );
 bookingSchema.index({ memberId: 1, status: 1, classId: 1 });
+// Cancelled history remains reusable; only active member/class pairs are unique.
+bookingSchema.index(
+  { memberId: 1, classId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: "Active" },
+    name: "unique_active_member_class",
+  },
+);
 bookingSchema.index({ classId: 1, status: 1 });
 bookingSchema.index({ memberId: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, createdAt: -1 });

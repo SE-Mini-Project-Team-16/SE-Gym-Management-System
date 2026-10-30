@@ -28,6 +28,7 @@ import {
   razorpayWebhook,
   verifyRazorpayPayment,
 } from "./payments.js";
+import { createBooking } from "./bookings.js";
 
 const publicUser = sanitizeUser;
 const objectId = (value) => mongoose.isObjectIdOrHexString(value);
@@ -149,7 +150,7 @@ export function createApp(config) {
   app.delete("/api/users/delete/:id", allowRoles("Admin"), deleteUser);
   app.get("/api/revenue/view", allowRoles("Admin"), getRevenue);
 
-  // Bounded read endpoints for the shell; mutations belong to the team's module issues.
+  // Bounded shell reads and the issue #6 member booking mutation.
   app.get("/api/classes", async (req, res) => {
     const filter = { status: "Open", startsAt: { $gte: new Date() } };
     if (req.user.role === "Trainer") filter.trainerId = req.user._id;
@@ -162,6 +163,7 @@ export function createApp(config) {
         .maxTimeMS(1000),
     });
   });
+  app.post("/api/bookings", allowRoles("Member"), createBooking);
   app.get("/api/bookings", async (req, res) => {
     const filter = req.user.role === "Member" ? { memberId: req.user._id } : {};
     if (req.user.role === "Trainer") {
