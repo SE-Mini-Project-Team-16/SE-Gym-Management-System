@@ -15,7 +15,7 @@ Shared Mongoose models live in `server/src/models.js`:
 | Booking | `memberId`, `classId`, `status` (`Active`, `Cancelled`) |
 | Equipment | unique `inventoryId`, `name`, `category`, `status` (`Available`, `Under Maintenance`) |
 
-Issue #4 implements membership renewal using a clearly labeled demo checkout in local development and Razorpay Standard Checkout when explicitly configured. Successful renewal updates `User.tier` and extends `User.membershipExpiresAt`; the pass becomes available on the next request with no cache invalidation. All timestamps are UTC instants; the UI formats them in the browser's timezone. Issues #6/#7 own booking and cancellation mutations; issue #8 owns inventory/ticket mutations. Add new routers before the authenticated API 404 handler. Counts can lag writes by at most 10 seconds; explicitly invalidate or remove the summary cache if stronger consistency is needed.
+Issue #4 implements membership renewal using a clearly labeled demo checkout in local development and Razorpay Standard Checkout when explicitly configured. Successful renewal updates `User.tier` and extends `User.membershipExpiresAt`; the pass becomes available on the next request with no cache invalidation. All timestamps are UTC instants; the UI formats them in the browser's timezone. Issue #6 implements member booking creation; issue #7 owns class cancellation and notifications; issue #8 owns inventory/ticket mutations. Add new routers before the authenticated API 404 handler. Counts can lag writes by at most 10 seconds; explicitly invalidate or remove the summary cache if stronger consistency is needed.
 
 ## JSON API
 
@@ -32,6 +32,7 @@ Same-origin `/api` avoids exposing permissive CORS. All requests with bodies mus
 | POST / DELETE | `/api/users/delete` | Admin | JSON `userId` or `:id` → delete confirmation or 403 |
 | GET | `/api/revenue/view` | Admin | Total revenue & breakdown by tier or 403 |
 | GET | `/api/classes` | Signed in | `items`, next 50 open classes (own classes for Trainer) |
+| POST | `/api/bookings` | Member | JSON `classId` → 200 `{ status: "success", bookingId, remainingSlots }`; 400 unavailable/invalid class, 404 missing class, 409 duplicate active booking |
 | GET | `/api/bookings` | Signed in | `items`, latest 50 (own for Member; own classes for Trainer) |
 | GET | `/api/equipment` | Signed in | `items`, first 50 inventory IDs (available only for Member) |
 | GET | `/api/passes/me` | Active Member | `token`, `expiresAt`, `member` display metadata |
@@ -43,6 +44,18 @@ Same-origin `/api` avoids exposing permissive CORS. All requests with bodies mus
 `PAYMENT_MODE` defaults to `demo` outside production and is rejected in production. The demo checkout displays a no-real-payment notice, collects no payment details, and offers simulated success/failure; only the success action updates the member. To use Razorpay instead, set `PAYMENT_MODE=razorpay` and provide `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`. Existing tier prices are INR (₹30/₹60/₹100; values sent to Razorpay are paise). The browser Checkout callback is verified with the server-created order ID, then the server fetches the payment and requires `status: captured`, matching order, amount and currency. `RAZORPAY_WEBHOOK_SECRET` verifies the exact raw body for `payment.captured` events. Both confirmation paths use a MongoDB transaction and unique order/payment receipts, so retries cannot extend expiry twice. `MEMBERSHIP_DURATION_DAYS` defaults to 30. MongoDB must support transactions (Atlas or replica set); `DEMO_DATABASE=true` starts a single-node in-memory replica set. Receipts store gateway references, amount/currency, tier, and applied expiry; card details are never stored or logged. For a public Razorpay deployment, configure `/api/payments/webhook` and subscribe to `payment.captured`.
 
 No endpoint accepts a caller-provided member ID for pass ownership. Session JWTs require HS256, issuer `gms`, audience `gms-api`, and a valid MongoDB user ID in `sub`. Roles are read from the database on every request, not trusted from client state. Disabled/deleted accounts cannot continue using old sessions.
+
+### Class booking contract — issue #6 / REQ-3
+
+`POST /api/bookings` accepts a 24-character hexadecimal `classId`. The authenticated Member owns the booking; supplied `memberId`, `status`, capacity, and slot fields are ignored. Admins and Trainers receive 403, missing/invalid sessions and disabled accounts receive 401. This endpoint implements class capacity enforcement; membership activation remains the payment workflow.
+
+An open, future class with `availableSlots > 0` is reserved using a single conditional `findOneAndUpdate` and `$inc: { availableSlots: -1 }`. The slot decrement and Active booking insert run in the same MongoDB transaction, with snapshot reads and majority writes. Concurrent transactions retry through the driver; at the last slot only one reservation commits. Any failed booking insert aborts the slot decrement. The response is sent only after commit and reports the remaining slots at that reservation, not a guarantee that later requests have not changed them.
+
+The `unique_active_member_class` partial unique index enforces one Active booking per member/class across requests and API instances. A repeat attempt returns 409 without consuming a slot. Cancelled historical records do not prevent a new booking. Booking a full, cancelled, or started class returns 400 per the architecture contract; a valid but unknown class ID returns 404. Existing booking list ownership filters apply to newly created records. Class cancellation/notifications and booking UI changes are outside issue #6.
+
+**Deployment:** MongoDB must be Atlas or a replica set (the existing demo database already is one). Before enabling traffic, run `npm run indexes -w server` to build the partial unique index. If existing data has duplicate Active member/class pairs, reconcile those records and their class slot counts before retrying index creation; the index command fails rather than silently deleting records. No existing records are changed automatically. Summary counts can lag a booking by the existing 10-second dashboard cache TTL; `/api/classes` and `/api/bookings` read the database directly.
+
+`server/tests/bookings.test.js` uses a real single-node MongoDB replica set and the actual authenticated Express endpoint. It covers TC-BK-01/02/03, ten-member contention for five places, concurrent duplicate requests, rollback after an injected insert failure, database-enforced uniqueness, cancelled history, invalid/missing/unavailable classes, staff/anonymous/disabled-account rejection, and caller-supplied ownership. Run `npx vitest run server/tests/bookings.test.js` or the complete `npm test` suite.
 
 ### Registration contract — REQ-1 / NFR-4
 
