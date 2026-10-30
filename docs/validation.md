@@ -44,3 +44,12 @@ Scope: issue #1. These are local development results, not production SLA evidenc
 | Local HTTP errors | 0 |
 
 The performance smoke test uses a real temporary MongoDB database, on the same machine as the API, and includes both uncached and cached requests. It does not include a WAN/Atlas connection, reverse proxy, or a sustained 10-minute load. Re-run the supplied k6 test on provisioned staging before accepting NFR-1. Run the entry-pass monitor for the specified 72-hour observation before accepting NFR-3. Validate the deployed TLS configuration separately for NFR-6; Firefox/Safari and full team UAT remain outstanding.
+
+## Issue #6 — class booking API (2026-10-30)
+
+- Added `POST /api/bookings`, member-owned booking creation, atomic conditional slot decrement, transactional booking persistence, and a partial unique Active member/class index.
+- Added 18 real-MongoDB integration cases in `server/tests/bookings.test.js`, including TC-BK-01/02/03, concurrent duplicate requests, rollback after persistence failure, access controls, and malformed/unavailable classes.
+- `npm run build`: passed.
+- `git diff --check` and JavaScript syntax checks for the new handler/test: passed.
+- `npm test`: 45 tests passed; 78 tests skipped across three failed suite setups. The new booking suite, existing API suite, and existing registration suite could not start MongoDB in this execution environment (`open: Operation not permitted`, process exit 100). The 18 new integration cases have not been verified as passing. A separate attempt with MongoDB 7.0.24 encountered the same startup error.
+- Run the full suite in CI or a local environment that permits MongoDB startup before merging. Production also requires Atlas/a replica set and creation of the `unique_active_member_class` index; reconcile any existing duplicate Active member/class records and slot counts first.
