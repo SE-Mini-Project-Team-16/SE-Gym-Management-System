@@ -199,4 +199,110 @@ describe("responsive application shell", () => {
       ).toBeInTheDocument(),
     );
   });
+  it("renders class cancellation control for Admin and dispatches cancellation API", async () => {
+    const adminUser = {
+      id: "admin1",
+      firstName: "Alex",
+      lastName: "Admin",
+      role: "Admin",
+    };
+    const testClass = {
+      _id: "class-123",
+      name: "Power Circuit",
+      startsAt: new Date(Date.now() + 3600_000).toISOString(),
+      durationMinutes: 45,
+      capacity: 10,
+      availableSlots: 7,
+    };
+    let cancelled = false;
+    mockApi((url, options) => {
+      if (url.endsWith("/auth/login")) {
+        return { body: { token: "admin-session", user: adminUser } };
+      }
+      if (url.endsWith("/classes/class-123/cancel") && options.method === "POST") {
+        cancelled = true;
+        return {
+          body: {
+            status: "success",
+            message: 'Class "Power Circuit" cancelled. Enrolled members notified.',
+          },
+        };
+      }
+      if (url.endsWith("/classes")) {
+        return { body: { items: cancelled ? [] : [testClass] } };
+      }
+      if (url.endsWith("/bookings")) {
+        return { body: { items: [] } };
+      }
+      return { body: { ...dashboard, user: adminUser } };
+    });
+    vi.stubGlobal("confirm", () => true);
+
+    render(<App />);
+    await signIn("admin@gym.test");
+    fireEvent.click(screen.getByRole("button", { name: "Bookings" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Upcoming classes" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Power Circuit")).toBeInTheDocument();
+
+    const cancelBtn = screen.getByRole("button", { name: "Cancel class Power Circuit" });
+    expect(cancelBtn).toBeInTheDocument();
+
+    fireEvent.click(cancelBtn);
+
+    expect(
+      await screen.findByText('Class "Power Circuit" cancelled. Enrolled members notified.'),
+    ).toBeInTheDocument();
+  });
+  it("does not render cancel buttons for Members, but renders notification update banner", async () => {
+    const testClass = {
+      _id: "class-456",
+      name: "Morning Yoga",
+      startsAt: new Date(Date.now() + 7200_000).toISOString(),
+      durationMinutes: 60,
+      capacity: 15,
+      availableSlots: 10,
+    };
+    const mockNotes = [
+      {
+        _id: "note-1",
+        message: 'The class "Power Circuit" scheduled for tomorrow has been cancelled.',
+      },
+    ];
+    mockApi((url) => {
+      if (url.endsWith("/auth/login")) {
+        return { body: { token: "member-session", user } };
+      }
+      if (url.endsWith("/classes")) {
+        return { body: { items: [testClass] } };
+      }
+      if (url.endsWith("/bookings")) {
+        return { body: { items: [] } };
+      }
+      if (url.endsWith("/notifications")) {
+        return { body: { items: mockNotes } };
+      }
+      return { body: dashboard };
+    });
+
+    render(<App />);
+    await signIn();
+    fireEvent.click(screen.getByRole("button", { name: "Bookings" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Upcoming classes" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Morning Yoga")).toBeInTheDocument();
+
+    // Member should NOT see cancel class buttons
+    expect(screen.queryByRole("button", { name: /Cancel class/ })).not.toBeInTheDocument();
+
+    // Member should see class schedule update notification
+    expect(screen.getByText("Class schedule updates")).toBeInTheDocument();
+    expect(
+      screen.getByText('The class "Power Circuit" scheduled for tomorrow has been cancelled.'),
+    ).toBeInTheDocument();
+  });
 });
