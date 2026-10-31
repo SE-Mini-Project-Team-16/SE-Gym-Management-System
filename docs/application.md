@@ -15,6 +15,7 @@ Shared Mongoose models live in `server/src/models.js`:
 | Booking | `memberId`, `classId`, `status` (`Active`, `Cancelled`) |
 | Equipment | unique `inventoryId`, `name`, `category`, `status` (`Available`, `Under Maintenance`) |
 | Notification | `recipientId`, `classId`, `type` (`class_cancelled`), `message`, `read`, timestamps |
+| Ticket | unique `ticketId`, `equipmentId`, `equipment`, `submittedBy`, `issueDescription`, `status` (`Open`, `In Progress`, `Resolved`), timestamps |
 
 Issue #4 implements membership renewal using a clearly labeled demo checkout in local development and Razorpay Standard Checkout when explicitly configured. Successful renewal updates `User.tier` and extends `User.membershipExpiresAt`; the pass becomes available on the next request with no cache invalidation. All timestamps are UTC instants; the UI formats them in the browser's timezone. Issue #6 implements member booking creation; issue #7 owns class cancellation and notifications; issue #8 owns inventory/ticket mutations. Add new routers before the authenticated API 404 handler. Counts can lag writes by at most 10 seconds; explicitly invalidate or remove the summary cache if stronger consistency is needed.
 
@@ -37,7 +38,10 @@ Same-origin `/api` avoids exposing permissive CORS. All requests with bodies mus
 | GET | `/api/notifications` | Signed in | `items`, user notifications sorted latest first |
 | POST | `/api/bookings` | Member | JSON `classId` → 200 `{ status: "success", bookingId, remainingSlots }`; 400 unavailable/invalid class, 404 missing class, 409 duplicate active booking |
 | GET | `/api/bookings` | Signed in | `items`, latest 50 (own for Member; own classes for Trainer) |
-| GET | `/api/equipment` | Signed in | `items`, first 50 inventory IDs (available only for Member) |
+| GET | `/api/equipment` | Signed in | `items`, first 50 equipment items (filtered to `status: "Available"` for Member; supports `?status=` for staff) |
+| POST | `/api/equipment/ticket` | Admin / Trainer | JSON `equipmentId`, `issueDescription` → 201 `{ status: "success", ticketId, message, ticket }`; 400 invalid/missing, 403 Member |
+| GET | `/api/equipment/tickets` | Admin / Trainer | `items`, latest 50 logged maintenance tickets or 403 |
+| PATCH / PUT / POST | `/api/equipment/:inventoryId/status` | Admin / Trainer | JSON `status` (`Available`, `Under Maintenance`) → 200 `{ status: "success", equipment }`; 400 invalid status, 404 missing, 403 Member |
 | GET | `/api/passes/me` | Active Member | `token`, `expiresAt`, `member` display metadata |
 | POST | `/api/passes/verify` | Admin / Trainer | JSON `token` → `valid: true`, `member`, or 403 |
 | POST | `/api/payments/orders` | Member | JSON `tier` (`Basic`, `Premium`, `VIP`) → server-created demo or Razorpay order |
@@ -84,6 +88,38 @@ The system implements class cancellation and member notification dispatch in `se
 - **Indexes**:
   - `Notification` index `{ recipientId: 1, createdAt: -1 }` accelerates member inbox retrieval.
   - `Notification` index `{ classId: 1 }` accelerates class-specific notification auditing. Run `npm run indexes -w server` to build declared indexes.
+
+### Equipment ticketing & availability filtering contract — issue #8 / REQ-5 / REQ-6 / UT-05 / UT-06 / ST-03
+
+The equipment maintenance ticketing system and availability filtering are implemented in `server/src/controllers/equipmentController.js`, `server/src/ticketModel.js`, and `server/src/equipmentRoute.js`:
+- **Ticketing Endpoints**: `POST /api/equipment/ticket` and `POST /api/equipment/tickets`.
+  - **RBAC**: Restricted to staff (`Admin` and `Trainer`). Member requests are rejected with `403 Forbidden` (`REQ-5`).
+  - **Payload**: Accepts `{ equipmentId, issueDescription }` (also supports aliases `{ inventoryId, description }`).
+  - **Validation (`TC-EQ-01`, `TC-EQ-02`, `UT-05`, `ST-03`)**:
+    - Rejects missing or empty `equipmentId` with `400 Bad Request`.
+    - Rejects non-existent inventory IDs with `400 Bad Request`.
+    - Rejects missing or empty `issueDescription` with `400 Bad Request`.
+    - Enforces maximum length of 1000 characters for `issueDescription`.
+  - **Response & Persistence**: Returns `201 Created` with `{ status: "success", ticketId, message, ticket }`. Generates human-readable unique ticket IDs formatted as `TCK-xxx`. Persists ticket documents with references to the equipment and reporting staff member.
+- **Ticket Audit & Retrieval**: `GET /api/equipment/tickets` allows staff to inspect the latest 50 logged maintenance tickets with populated reporter and equipment details.
+- **Equipment Status Mutations**: `PATCH /api/equipment/:inventoryId/status` (also supports `PUT` and `POST`).
+  - **RBAC**: Staff only (`Admin` and `Trainer`).
+  - **Payload**: `{ status: "Available" | "Under Maintenance" }`. Invalid status values return `400 Bad Request`. Non-existent inventory IDs return `404 Not Found`.
+  - Enables staff to transition equipment state: `Available <-> Under Maintenance` per SRS §5.3.2 and STP §3.4.
+- **Availability Filtering (`REQ-6`, `TC-EQ-03`, `TC-EQ-04`, `UT-06`)**:
+  - `GET /api/equipment` strictly excludes items with `status: "Under Maintenance"` for all authenticated `Member` users, returning only available equipment.
+  - Setting equipment status to `Under Maintenance` immediately removes it from member views (`TC-EQ-03`).
+  - Returning equipment to `Available` immediately restores it to member views (`TC-EQ-04`).
+  - Staff users can view all equipment or filter using query parameters (e.g. `?status=Available`, `?status=Under Maintenance`).
+- **Frontend Integration**:
+  - **Filter Controls**: Staff view includes interactive filter tabs for "All", "Available", and "Under Maintenance" with real-time counters.
+  - **Ticket Submission**: Staff can launch the "Log Maintenance Ticket" modal directly from the equipment toolbar or from any equipment card's "Report fault" button.
+  - **Status Management**: Admins have one-click status toggle buttons ("Mark Under Maintenance" / "Mark Available") directly on equipment cards with immediate visual state feedback.
+- **Indexes**:
+  - `Ticket` index `{ ticketId: 1 }` (unique).
+  - `Ticket` compound index `{ equipmentId: 1, createdAt: -1 }`.
+  - `Ticket` compound index `{ status: 1, createdAt: -1 }`.
+  - `Ticket` compound index `{ submittedBy: 1, createdAt: -1 }`. Run `npm run indexes -w server` to build declared indexes.
 
 ### Registration contract — REQ-1 / NFR-4
 
@@ -159,6 +195,8 @@ The system provides an automated, self-contained database backup and recovery jo
 | NFR-2 | Vitest suite (`server/tests/backup.test.js`) verifying daily snapshot creation, clean database restore, checksum tampering rejection, retention pruning, and scheduled execution (TC-REL-01, ST-07, SV-10) | Execution of daily backup job on staging Atlas cluster and quarterly disaster recovery drill |
 | NFR-3 | Active/expired/disabled/tampered/revoked pass tests; session/pass separation; automatic UI refresh | `server/scripts/monitor-pass.js`: 72-hour staging observation, availability ≥ 99.5% |
 | REQ-4 | Vitest test suite (`server/tests/class-cancellation.test.js` with 16 tests covering TC-CL-01, TC-CL-02, TC-CL-03, UT-04, ST-02) and React interaction tests (`client/src/App.test.jsx`) | Verification of external delivery channels (SMS/Email webhooks) on staging deployment |
+| REQ-5 | Vitest integration suite (`server/tests/equipment-tickets.test.js` covering TC-EQ-01, TC-EQ-02, UT-05, ST-03) and React interaction tests (`client/src/App.test.jsx`) | Verification of external maintenance dispatch webhooks on staging deployment |
+| REQ-6 | Vitest state-transition and filtering tests (`TC-EQ-03`, `TC-EQ-04`, `UT-06`, `ST-03`) and client status toggle tests | Verification of multi-facility equipment catalog synchronization |
 
 For k6, provide HTTPS `BASE_URL` and `SESSION_TOKENS` as an environment-only JSON array of 50 distinct signed-in sessions, against dedicated seeded staging data. Run `k6 run tests/performance/dashboard.js`; keep tokens out of source, command history, and logs. Sessions last one hour, longer than this 12-minute test. The native smoke benchmark is shorter and is not the staging acceptance result.
 
