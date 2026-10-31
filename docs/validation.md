@@ -53,3 +53,16 @@ The performance smoke test uses a real temporary MongoDB database, on the same m
 - `git diff --check` and JavaScript syntax checks for the new handler/test: passed.
 - `npm test`: 45 tests passed; 78 tests skipped across three failed suite setups. The new booking suite, existing API suite, and existing registration suite could not start MongoDB in this execution environment (`open: Operation not permitted`, process exit 100). The 18 new integration cases have not been verified as passing. A separate attempt with MongoDB 7.0.24 encountered the same startup error.
 - Run the full suite in CI or a local environment that permits MongoDB startup before merging. Production also requires Atlas/a replica set and creation of the `unique_active_member_class` index; reconcile any existing duplicate Active member/class records and slot counts first.
+
+## Issue #7 — Class cancellation & member notifications (2026-10-31)
+
+Build Class Cancellation Logic & Member Notifications (REQ-4, UT-04, ST-02, TC-CL-01, TC-CL-02, TC-CL-03), validated on Node.js with in-memory replica set and Vitest / Vite test harnesses.
+
+| Check | Result |
+| --- | --- |
+| Full Vitest suite | 141 tests passed across 9 test files (0 failures) |
+| Class cancellation & notification suite (`class-cancellation.test.js`) | 16 passed: Admin cancellation of any class (TC-CL-01), status transition to Cancelled, active booking cancellation, notification dispatch, Trainer cancellation of own class (TC-CL-02), Member cancellation rejection with 403 (TC-CL-03), cross-trainer cancellation rejection with 403, unauthenticated/disabled staff rejection (401), past/started class cancellation guard (400), already cancelled class guard (400), non-existent/invalid class ID checks (404/400), DELETE route equivalence, and stubbable notification service interface (STP §11) |
+| Client component interaction suite (`App.test.jsx`) | 2 passed: Admin cancel button rendering & successful cancellation dispatch toast, Member view lacking cancel button and rendering "Class schedule updates" notification banner |
+| Production frontend bundle | Vite build passed cleanly (382ms) |
+| Model index creation | `Notification` collection indexes `{ recipientId: 1, createdAt: -1 }` and `{ classId: 1 }` declared in `server/scripts/indexes.js` |
+

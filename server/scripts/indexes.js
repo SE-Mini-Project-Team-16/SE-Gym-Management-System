@@ -6,6 +6,7 @@ import {
   Equipment,
   PaymentOrder,
   PaymentReceipt,
+  Notification,
 } from "../src/models.js";
 
 if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is required.");
@@ -18,6 +19,7 @@ try {
     Equipment,
     PaymentOrder,
     PaymentReceipt,
+    Notification,
   ])
     await Model.createIndexes();
   console.log("Dashboard and list indexes created.");

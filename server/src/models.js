@@ -113,9 +113,23 @@ const paymentReceiptSchema = new Schema(
   { timestamps: true },
 );
 
+const notificationSchema = new Schema(
+  {
+    recipientId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    classId: { type: Schema.Types.ObjectId, ref: "GymClass", required: true },
+    type: { type: String, enum: ["ClassCancelled"], default: "ClassCancelled" },
+    message: { type: String, required: true },
+    read: { type: Boolean, default: false },
+  },
+  { timestamps: true },
+);
+notificationSchema.index({ recipientId: 1, createdAt: -1 });
+notificationSchema.index({ classId: 1 });
+
 export const User = model("User", userSchema);
 export const GymClass = model("GymClass", classSchema);
 export const Booking = model("Booking", bookingSchema);
 export const Equipment = model("Equipment", equipmentSchema);
 export const PaymentOrder = model("PaymentOrder", paymentOrderSchema);
 export const PaymentReceipt = model("PaymentReceipt", paymentReceiptSchema);
+export const Notification = model("Notification", notificationSchema);

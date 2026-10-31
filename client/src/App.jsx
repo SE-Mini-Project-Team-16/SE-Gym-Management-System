@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowRight,
+  Bell,
   CalendarDays,
   Check,
   ChevronRight,
@@ -767,9 +768,11 @@ function VerifyPass({ api, notify }) {
   );
 }
 
-function Collection({ page, api, notify }) {
+function Collection({ page, api, notify, user }) {
   const [items, setItems] = useState(null);
   const [classes, setClasses] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [cancellingId, setCancellingId] = useState(null);
   const [error, setError] = useState("");
   const [version, setVersion] = useState(0);
   useEffect(() => {
@@ -784,12 +787,22 @@ function Collection({ page, api, notify }) {
     Promise.all([
       api(path, { signal: controller.signal }),
       ...(page === "Bookings"
-        ? [api("/classes", { signal: controller.signal })]
+        ? [
+            api("/classes", { signal: controller.signal }),
+            ...(user?.role === "Member"
+              ? [
+                  api("/notifications", { signal: controller.signal }).catch(
+                    () => ({ items: [] }),
+                  ),
+                ]
+              : []),
+          ]
         : []),
     ])
-      .then(([data, sessions]) => {
+      .then(([data, sessions, notes]) => {
         setItems(data.items);
         setClasses(sessions?.items || []);
+        setNotifications(notes?.items || []);
       })
       .catch((error) => {
         if (error.name !== "AbortError") {
@@ -798,7 +811,32 @@ function Collection({ page, api, notify }) {
         }
       });
     return () => controller.abort();
-  }, [page, api, notify, version]);
+  }, [page, api, notify, version, user?.role]);
+
+  async function handleCancelClass(cls) {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.confirm === "function" &&
+      !window.confirm(
+        `Are you sure you want to cancel "${cls.name}"? Enrolled members will be notified.`,
+      )
+    ) {
+      return;
+    }
+    setCancellingId(cls._id);
+    try {
+      const res = await api(`/classes/${cls._id}/cancel`, { method: "POST" });
+      notify(
+        res.message || `Class "${cls.name}" cancelled. Enrolled members notified.`,
+        "success",
+      );
+      setVersion((v) => v + 1);
+    } catch (err) {
+      notify(err.message, "error");
+    } finally {
+      setCancellingId(null);
+    }
+  }
   const headings = {
     Members: [
       "THE PEOPLE WHO SHOW UP",
@@ -830,6 +868,17 @@ function Collection({ page, api, notify }) {
           Refresh
         </button>
       </div>
+      {page === "Bookings" && notifications.length > 0 && (
+        <div className="notice cancellation-notice" role="status">
+          <Bell size={20} />
+          <div>
+            <strong>Class schedule updates</strong>
+            {notifications.slice(0, 3).map((n) => (
+              <p key={n._id}>{n.message}</p>
+            ))}
+          </div>
+        </div>
+      )}
       <section className="panel collection">
         {error ? (
           <Empty title="Unable to load this page">
@@ -923,8 +972,9 @@ function Collection({ page, api, notify }) {
             <h2>Upcoming classes</h2>
           </div>
           <p className="small">
-            Booking and cancellation tools are being built by the team. Contact
-            reception to reserve a place.
+            {user?.role === "Member"
+              ? "View upcoming classes and manage your training schedule."
+              : "Manage upcoming sessions and cancel classes if needed."}
           </p>
           {classes.length ? (
             classes.map((item) => (
@@ -938,6 +988,20 @@ function Collection({ page, api, notify }) {
                 <Badge muted={!item.availableSlots}>
                   {item.availableSlots} spots left
                 </Badge>
+                {(user?.role === "Admin" ||
+                  (user?.role === "Trainer" &&
+                    (!item.trainerId ||
+                      String(item.trainerId) === String(user?.id || user?._id)))) && (
+                  <button
+                    type="button"
+                    className="cancel-class-button"
+                    disabled={cancellingId === item._id}
+                    onClick={() => handleCancelClass(item)}
+                    aria-label={`Cancel class ${item.name}`}
+                  >
+                    {cancellingId === item._id ? "Cancelling…" : "Cancel class"}
+                  </button>
+                )}
               </div>
             ))
           ) : (
@@ -1149,7 +1213,12 @@ export default function App() {
               ) : page === "Verify pass" ? (
                 <VerifyPass api={api} notify={notify} />
               ) : (
-                <Collection page={page} api={api} notify={notify} />
+                <Collection
+                  page={page}
+                  api={api}
+                  notify={notify}
+                  user={session.user}
+                />
               )}
             </main>
             <footer>

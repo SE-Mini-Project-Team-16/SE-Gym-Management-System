@@ -29,6 +29,10 @@ import {
   verifyRazorpayPayment,
 } from "./payments.js";
 import { createBooking } from "./bookings.js";
+import {
+  cancelClass,
+  getNotifications,
+} from "./controllers/classController.js";
 
 const publicUser = sanitizeUser;
 const objectId = (value) => mongoose.isObjectIdOrHexString(value);
@@ -158,11 +162,28 @@ export function createApp(config) {
       items: await GymClass.find(filter)
         .sort({ startsAt: 1 })
         .limit(50)
-        .select("name startsAt durationMinutes capacity availableSlots")
+        .select("name startsAt durationMinutes capacity availableSlots trainerId status")
         .lean()
         .maxTimeMS(1000),
     });
   });
+  // REQ-4 / UT-04 / ST-02: Class cancellation and member notification dispatch
+  app.post(
+    "/api/classes/:id/cancel",
+    allowRoles("Admin", "Trainer"),
+    cancelClass,
+  );
+  app.post(
+    "/api/classes/cancel",
+    allowRoles("Admin", "Trainer"),
+    cancelClass,
+  );
+  app.delete(
+    "/api/classes/:id",
+    allowRoles("Admin", "Trainer"),
+    cancelClass,
+  );
+  app.get("/api/notifications", getNotifications);
   app.post("/api/bookings", allowRoles("Member"), createBooking);
   app.get("/api/bookings", async (req, res) => {
     const filter = req.user.role === "Member" ? { memberId: req.user._id } : {};

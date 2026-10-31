@@ -14,6 +14,7 @@ Shared Mongoose models live in `server/src/models.js`:
 | GymClass | `name`, `trainerId`, `startsAt`, `durationMinutes`, `capacity`, `availableSlots`, `status` (`Open`, `Cancelled`) |
 | Booking | `memberId`, `classId`, `status` (`Active`, `Cancelled`) |
 | Equipment | unique `inventoryId`, `name`, `category`, `status` (`Available`, `Under Maintenance`) |
+| Notification | `recipientId`, `classId`, `type` (`class_cancelled`), `message`, `read`, timestamps |
 
 Issue #4 implements membership renewal using a clearly labeled demo checkout in local development and Razorpay Standard Checkout when explicitly configured. Successful renewal updates `User.tier` and extends `User.membershipExpiresAt`; the pass becomes available on the next request with no cache invalidation. All timestamps are UTC instants; the UI formats them in the browser's timezone. Issue #6 implements member booking creation; issue #7 owns class cancellation and notifications; issue #8 owns inventory/ticket mutations. Add new routers before the authenticated API 404 handler. Counts can lag writes by at most 10 seconds; explicitly invalidate or remove the summary cache if stronger consistency is needed.
 
@@ -32,6 +33,8 @@ Same-origin `/api` avoids exposing permissive CORS. All requests with bodies mus
 | POST / DELETE | `/api/users/delete` | Admin | JSON `userId` or `:id` → delete confirmation or 403 |
 | GET | `/api/revenue/view` | Admin | Total revenue & breakdown by tier or 403 |
 | GET | `/api/classes` | Signed in | `items`, next 50 open classes (own classes for Trainer) |
+| POST / DELETE | `/api/classes/:id/cancel` | Admin / Trainer (own) | Cancels class, updates bookings to Cancelled, notifies members; 403 Member/cross-trainer |
+| GET | `/api/notifications` | Signed in | `items`, user notifications sorted latest first |
 | POST | `/api/bookings` | Member | JSON `classId` → 200 `{ status: "success", bookingId, remainingSlots }`; 400 unavailable/invalid class, 404 missing class, 409 duplicate active booking |
 | GET | `/api/bookings` | Signed in | `items`, latest 50 (own for Member; own classes for Trainer) |
 | GET | `/api/equipment` | Signed in | `items`, first 50 inventory IDs (available only for Member) |
@@ -56,6 +59,31 @@ The `unique_active_member_class` partial unique index enforces one Active bookin
 **Deployment:** MongoDB must be Atlas or a replica set (the existing demo database already is one). Before enabling traffic, run `npm run indexes -w server` to build the partial unique index. If existing data has duplicate Active member/class pairs, reconcile those records and their class slot counts before retrying index creation; the index command fails rather than silently deleting records. No existing records are changed automatically. Summary counts can lag a booking by the existing 10-second dashboard cache TTL; `/api/classes` and `/api/bookings` read the database directly.
 
 `server/tests/bookings.test.js` uses a real single-node MongoDB replica set and the actual authenticated Express endpoint. It covers TC-BK-01/02/03, ten-member contention for five places, concurrent duplicate requests, rollback after an injected insert failure, database-enforced uniqueness, cancelled history, invalid/missing/unavailable classes, staff/anonymous/disabled-account rejection, and caller-supplied ownership. Run `npx vitest run server/tests/bookings.test.js` or the complete `npm test` suite.
+
+### Class cancellation & notification contract — issue #7 / REQ-4 / UT-04 / ST-02
+
+The system implements class cancellation and member notification dispatch in `server/src/controllers/classController.js`:
+- **Endpoints**: `POST /api/classes/:id/cancel`, `POST /api/classes/cancel` (with `{ classId }` body), and `DELETE /api/classes/:id`.
+- **Role-Based Access Control (RBAC)**:
+  - `Admin`: Authorized to cancel any upcoming class (`TC-CL-01`).
+  - `Trainer`: Authorized to cancel only upcoming classes assigned to them (`trainerId` equals authenticated user ID; `TC-CL-02`). Attempts to cancel another trainer's class are rejected with `403 Forbidden`.
+  - `Member`: All class cancellation attempts are rejected with `403 Forbidden` (`TC-CL-03`).
+- **Validation**:
+  - Class ID must be a valid 24-character hexadecimal ObjectId (returns `400 Bad Request` if malformed).
+  - Class must exist in the database (returns `404 Not Found` if missing).
+  - Past or already started classes cannot be cancelled (returns `400 Bad Request`).
+  - Already cancelled classes cannot be cancelled again (returns `400 Bad Request`).
+- **State Transitions & Notifications**:
+  - Class status is updated from `"Open"` to `"Cancelled"`. Cancelled classes are excluded from the public upcoming class query on `GET /api/classes`.
+  - All active bookings for the cancelled class are transitioned to `status: "Cancelled"`.
+  - Notifications are dispatched to all enrolled members via `notificationService.dispatch()`. Notification records are persisted to MongoDB (`Notification` collection) and logged to the stubbable notification interface per STP §11.
+  - Authenticated members can retrieve their notifications at `GET /api/notifications` or view cancellation alerts directly on the frontend dashboard.
+- **Frontend Integration**:
+  - Admins and assigned Trainers see an inline "Cancel class" button in the class schedule list.
+  - Enrolled Members see a prominent notification alert on their dashboard if any of their booked classes have been cancelled.
+- **Indexes**:
+  - `Notification` index `{ recipientId: 1, createdAt: -1 }` accelerates member inbox retrieval.
+  - `Notification` index `{ classId: 1 }` accelerates class-specific notification auditing. Run `npm run indexes -w server` to build declared indexes.
 
 ### Registration contract — REQ-1 / NFR-4
 
@@ -130,6 +158,7 @@ The system provides an automated, self-contained database backup and recovery jo
 | NFR-1 | Real-MongoDB integration suite, bounded cache tests, and `npm run test:performance` with 1,000 members / 200 bookings / 50 simultaneous users | `tests/performance/dashboard.js`: k6 2-minute warm-up + 10-minute steady state, p95 < 1.5 s, errors < 1% |
 | NFR-2 | Vitest suite (`server/tests/backup.test.js`) verifying daily snapshot creation, clean database restore, checksum tampering rejection, retention pruning, and scheduled execution (TC-REL-01, ST-07, SV-10) | Execution of daily backup job on staging Atlas cluster and quarterly disaster recovery drill |
 | NFR-3 | Active/expired/disabled/tampered/revoked pass tests; session/pass separation; automatic UI refresh | `server/scripts/monitor-pass.js`: 72-hour staging observation, availability ≥ 99.5% |
+| REQ-4 | Vitest test suite (`server/tests/class-cancellation.test.js` with 16 tests covering TC-CL-01, TC-CL-02, TC-CL-03, UT-04, ST-02) and React interaction tests (`client/src/App.test.jsx`) | Verification of external delivery channels (SMS/Email webhooks) on staging deployment |
 
 For k6, provide HTTPS `BASE_URL` and `SESSION_TOKENS` as an environment-only JSON array of 50 distinct signed-in sessions, against dedicated seeded staging data. Run `k6 run tests/performance/dashboard.js`; keep tokens out of source, command history, and logs. Sessions last one hour, longer than this 12-minute test. The native smoke benchmark is shorter and is not the staging acceptance result.
 
