@@ -773,45 +773,123 @@ function Collection({ page, api, notify, user }) {
   const [classes, setClasses] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [cancellingId, setCancellingId] = useState(null);
+  const [tickets, setTickets] = useState([]);
+  const [equipmentFilter, setEquipmentFilter] = useState("All");
+  const [showTicketModal, setShowTicketModal] = useState(false);
+  const [ticketInventoryId, setTicketInventoryId] = useState("");
+  const [ticketDescription, setTicketDescription] = useState("");
+  const [submittingTicket, setSubmittingTicket] = useState(false);
+  const [updatingStatusId, setUpdatingStatusId] = useState(null);
   const [error, setError] = useState("");
   const [version, setVersion] = useState(0);
+
+  const isStaff = user?.role === "Admin" || user?.role === "Trainer";
+
   useEffect(() => {
     const controller = new AbortController();
     setItems(null);
     setError("");
-    const path = {
-      Members: "/members",
-      Bookings: "/bookings",
-      Equipment: "/equipment",
-    }[page];
-    Promise.all([
-      api(path, { signal: controller.signal }),
-      ...(page === "Bookings"
-        ? [
+
+    async function loadCollectionData() {
+      try {
+        if (page === "Members") {
+          const res = await api("/members", { signal: controller.signal });
+          setItems(res.items);
+        } else if (page === "Bookings") {
+          const [bookingsRes, classesRes, notesRes] = await Promise.all([
+            api("/bookings", { signal: controller.signal }),
             api("/classes", { signal: controller.signal }),
-            ...(user?.role === "Member"
-              ? [
-                  api("/notifications", { signal: controller.signal }).catch(
-                    () => ({ items: [] }),
-                  ),
-                ]
-              : []),
-          ]
-        : []),
-    ])
-      .then(([data, sessions, notes]) => {
-        setItems(data.items);
-        setClasses(sessions?.items || []);
-        setNotifications(notes?.items || []);
-      })
-      .catch((error) => {
-        if (error.name !== "AbortError") {
-          setError(error.message);
-          notify(error.message, "error");
+            user?.role === "Member"
+              ? api("/notifications", { signal: controller.signal }).catch(
+                  () => ({ items: [] }),
+                )
+              : Promise.resolve({ items: [] }),
+          ]);
+          setItems(bookingsRes.items);
+          setClasses(classesRes.items || []);
+          setNotifications(notesRes.items || []);
+        } else if (page === "Equipment") {
+          const [equipmentRes, ticketsRes] = await Promise.all([
+            api("/equipment", { signal: controller.signal }),
+            isStaff
+              ? api("/equipment/tickets", { signal: controller.signal }).catch(
+                  () => ({ items: [] }),
+                )
+              : Promise.resolve({ items: [] }),
+          ]);
+          setItems(equipmentRes.items);
+          setTickets(ticketsRes.items || []);
         }
-      });
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          setError(err.message);
+          notify(err.message, "error");
+        }
+      }
+    }
+
+    loadCollectionData();
     return () => controller.abort();
-  }, [page, api, notify, version, user?.role]);
+  }, [page, api, notify, version, user?.role, isStaff]);
+
+  function handleOpenTicketModal(item = null) {
+    setTicketInventoryId(item?.inventoryId || "");
+    setTicketDescription("");
+    setShowTicketModal(true);
+  }
+
+  async function handleSubmitTicket(e) {
+    e.preventDefault();
+    const inventoryId = ticketInventoryId.trim();
+    const description = ticketDescription.trim();
+    if (!inventoryId || !description) {
+      notify("Please provide both inventory ID and description.", "error");
+      return;
+    }
+    setSubmittingTicket(true);
+    try {
+      const res = await api("/equipment/ticket", {
+        method: "POST",
+        body: JSON.stringify({
+          equipmentId: inventoryId,
+          issueDescription: description,
+        }),
+      });
+      notify(
+        res.message || `Ticket ${res.ticketId} logged successfully.`,
+        "success",
+      );
+      setShowTicketModal(false);
+      setTicketInventoryId("");
+      setTicketDescription("");
+      setVersion((v) => v + 1);
+    } catch (err) {
+      notify(err.message, "error");
+    } finally {
+      setSubmittingTicket(false);
+    }
+  }
+
+  async function handleToggleEquipmentStatus(item) {
+    const newStatus =
+      item.status === "Available" ? "Under Maintenance" : "Available";
+    setUpdatingStatusId(item.inventoryId);
+    try {
+      const res = await api(`/equipment/${item.inventoryId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      notify(
+        res.message || `Equipment status updated to "${newStatus}".`,
+        "success",
+      );
+      setVersion((v) => v + 1);
+    } catch (err) {
+      notify(err.message, "error");
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  }
 
   async function handleCancelClass(cls) {
     if (
@@ -877,6 +955,42 @@ function Collection({ page, api, notify, user }) {
               <p key={n._id}>{n.message}</p>
             ))}
           </div>
+        </div>
+      )}
+      {page === "Equipment" && items && isStaff && (
+        <div className="equipment-controls">
+          <div
+            className="equipment-filters"
+            role="tablist"
+            aria-label="Equipment status filters"
+          >
+            {["All", "Available", "Under Maintenance"].map((status) => {
+              const count =
+                status === "All"
+                  ? items.length
+                  : items.filter((i) => i.status === status).length;
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  role="tab"
+                  aria-selected={equipmentFilter === status}
+                  className={`filter-pill ${equipmentFilter === status ? "active" : ""}`}
+                  onClick={() => setEquipmentFilter(status)}
+                >
+                  {status} ({count})
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="secondary report-ticket-btn"
+            onClick={() => handleOpenTicketModal()}
+          >
+            <Wrench size={16} />
+            Log maintenance ticket
+          </button>
         </div>
       )}
       <section className="panel collection">
@@ -953,19 +1067,150 @@ function Collection({ page, api, notify, user }) {
           </div>
         ) : (
           <div className="equipment-grid">
-            {items.map((item) => (
-              <article key={item._id}>
+            {(equipmentFilter === "All"
+              ? items
+              : items.filter((item) => item.status === equipmentFilter)
+            ).map((item) => (
+              <article
+                key={item._id || item.inventoryId}
+                className={
+                  item.status === "Under Maintenance" ? "under-maintenance" : ""
+                }
+              >
                 <Dumbbell size={28} />
-                <Badge muted={item.status !== "Available"}>{item.status}</Badge>
+                <Badge muted={item.status !== "Available"}>
+                  {item.status}
+                </Badge>
                 <h3>{item.name}</h3>
                 <p>
                   {item.category} · {item.inventoryId}
                 </p>
+                {isStaff && (
+                  <div className="equipment-card-actions">
+                    <button
+                      type="button"
+                      className="equipment-action-btn ticket-btn"
+                      onClick={() => handleOpenTicketModal(item)}
+                    >
+                      <Wrench size={13} /> Report fault
+                    </button>
+                    {user?.role === "Admin" && (
+                      <button
+                        type="button"
+                        disabled={updatingStatusId === item.inventoryId}
+                        className={`equipment-action-btn status-btn ${
+                          item.status === "Available"
+                            ? "maintenance-action"
+                            : "available-action"
+                        }`}
+                        onClick={() => handleToggleEquipmentStatus(item)}
+                      >
+                        {item.status === "Available"
+                          ? "Mark Under Maintenance"
+                          : "Mark Available"}
+                      </button>
+                    )}
+                  </div>
+                )}
               </article>
             ))}
           </div>
         )}
       </section>
+      {showTicketModal && (
+        <div
+          className="modal-scrim"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ticket-modal-title"
+        >
+          <div className="ticket-modal">
+            <div className="ticket-modal-header">
+              <h2 id="ticket-modal-title">Log Maintenance Ticket</h2>
+              <button
+                type="button"
+                className="close-modal-btn"
+                onClick={() => setShowTicketModal(false)}
+                aria-label="Close modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="small">
+              Submit an equipment fault ticket for review and maintenance (REQ-5).
+            </p>
+            <form onSubmit={handleSubmitTicket}>
+              <label>
+                Inventory ID
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. TRD-101"
+                  value={ticketInventoryId}
+                  onChange={(e) => setTicketInventoryId(e.target.value)}
+                />
+              </label>
+              <label>
+                Issue Description
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="Describe the issue, e.g. Treadmill belt slipping during use..."
+                  value={ticketDescription}
+                  onChange={(e) => setTicketDescription(e.target.value)}
+                />
+              </label>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => setShowTicketModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="primary"
+                  disabled={submittingTicket}
+                >
+                  {submittingTicket ? "Submitting..." : "Submit ticket"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {page === "Equipment" && !error && isStaff && tickets.length > 0 && (
+        <section className="panel catalog">
+          <div className="panel-heading">
+            <h2>Active maintenance tickets</h2>
+          </div>
+          <p className="small">
+            Track reported equipment faults and maintenance requests (REQ-5).
+          </p>
+          <div className="ticket-list">
+            {tickets.map((t) => (
+              <div className="ticket-row" key={t._id || t.ticketId}>
+                <div className="ticket-badge">
+                  <Wrench size={16} />
+                  <span>{t.ticketId}</span>
+                </div>
+                <div className="ticket-details">
+                  <h3>
+                    {t.equipmentId} · {t.equipment?.name || "Equipment"}
+                  </h3>
+                  <p>{t.issueDescription}</p>
+                  <span className="ticket-meta">
+                    Logged by {t.submittedBy?.firstName || "Staff"} ·{" "}
+                    {date(t.createdAt)}
+                  </span>
+                </div>
+                <Badge muted={t.status === "Resolved"}>{t.status}</Badge>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       {page === "Bookings" && !error && (
         <section className="panel catalog">
           <div className="panel-heading">

@@ -66,3 +66,16 @@ Build Class Cancellation Logic & Member Notifications (REQ-4, UT-04, ST-02, TC-C
 | Production frontend bundle | Vite build passed cleanly (382ms) |
 | Model index creation | `Notification` collection indexes `{ recipientId: 1, createdAt: -1 }` and `{ classId: 1 }` declared in `server/scripts/indexes.js` |
 
+## Issue #8 — Equipment ticketing system & availability filtering (2026-10-31)
+
+Create Equipment Ticketing System & Filter Unavailable Items (REQ-5, REQ-6, UT-05, UT-06, ST-03, TC-EQ-01, TC-EQ-02, TC-EQ-03, TC-EQ-04), validated on Node.js with in-memory replica set and Vitest / Vite test harnesses.
+
+| Check | Result |
+| --- | --- |
+| Full Vitest suite | 162 tests passed across 10 test files (0 failures) |
+| Equipment ticketing & filtering suite (`equipment-tickets.test.js`) | 19 passed: Admin & Trainer ticket creation with TCK-xxx ID generation (TC-EQ-01), non-existent inventory ID & empty description rejection with 400 (TC-EQ-02), oversized description rejection (>1000 chars), Member ticket submission rejection with 403, unauthenticated/disabled staff rejection (401), Member exclusion of Under Maintenance equipment (TC-EQ-03), reappearance on return to Available status (TC-EQ-04), equipment status update RBAC and validation, query parameter filtering (?status=Available), and staff ticket log retrieval |
+| Client component interaction suite (`App.test.jsx`) | 2 passed: Admin equipment filter tabs & ticket submission modal flow with success toast, Admin equipment status toggle between Available and Under Maintenance with success toast |
+| Production frontend bundle | Vite build passed cleanly (195ms) |
+| Model index creation | `Ticket` collection indexes `{ ticketId: 1 }` (unique), `{ equipmentId: 1, createdAt: -1 }`, `{ status: 1, createdAt: -1 }`, and `{ submittedBy: 1, createdAt: -1 }` declared in `server/scripts/indexes.js` |
+
+

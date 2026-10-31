@@ -930,6 +930,212 @@ td strong {
 .equipment-grid p {
   font-size: 11px;
 }
+.equipment-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.equipment-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.filter-pill {
+  border: 1px solid #d4dec9;
+  background: #f7faf3;
+  color: #55674c;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.filter-pill:hover {
+  background: #edf3e7;
+  border-color: #bccbb0;
+}
+.filter-pill.active {
+  background: #233e31;
+  color: #ffffff;
+  border-color: #233e31;
+}
+.report-ticket-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 8px 14px;
+}
+.equipment-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #edf2e7;
+}
+.equipment-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+.ticket-btn {
+  background: #f3f7ee;
+  color: #4c6341;
+  border-color: #cddbc3;
+}
+.ticket-btn:hover {
+  background: #e5eedd;
+}
+.status-btn.maintenance-action {
+  background: #fff5f2;
+  color: #9c3c26;
+  border-color: #f5cfc5;
+}
+.status-btn.maintenance-action:hover:not(:disabled) {
+  background: #fae4de;
+}
+.status-btn.available-action {
+  background: #f0f7ec;
+  color: #2e6634;
+  border-color: #c0dec4;
+}
+.status-btn.available-action:hover:not(:disabled) {
+  background: #dff0e3;
+}
+.status-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.under-maintenance {
+  background: #fafaf8;
+  border-color: #e8d0c8 !important;
+}
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 47, 38, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+.ticket-modal {
+  background: #ffffff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 480px;
+  padding: 28px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
+  border: 1px solid #e1e8d8;
+}
+.ticket-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.ticket-modal-header h2 {
+  font-size: 20px;
+  margin: 0;
+  font-weight: 600;
+  color: #172b20;
+}
+.close-modal-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #607055;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.close-modal-btn:hover {
+  background: #eef3e8;
+}
+.ticket-modal form {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ticket-modal textarea {
+  border: 1px solid #c9d5be;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+.ticket-modal input {
+  border: 1px solid #c9d5be;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+.ticket-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+.ticket-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: #fafdf7;
+  border: 1px solid #e1e8d8;
+  border-radius: 8px;
+  gap: 16px;
+}
+.ticket-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #4b633f;
+  min-width: 90px;
+}
+.ticket-details {
+  flex: 1;
+}
+.ticket-details h3 {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+.ticket-details p {
+  font-size: 12px;
+  margin: 0 0 4px;
+  color: #40523a;
+}
+.ticket-meta {
+  font-size: 11px;
+  color: #7b8f72;
+}
 .verify {
   max-width: 680px;
 }

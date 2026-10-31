@@ -33,6 +33,12 @@ import {
   cancelClass,
   getNotifications,
 } from "./controllers/classController.js";
+import {
+  createTicket,
+  getTickets,
+  updateEquipmentStatus,
+  getEquipment,
+} from "./controllers/equipmentController.js";
 
 const publicUser = sanitizeUser;
 const objectId = (value) => mongoose.isObjectIdOrHexString(value);
@@ -223,17 +229,32 @@ export function createApp(config) {
       .maxTimeMS(1000);
     res.json({ items });
   });
-  app.get("/api/equipment", async (req, res) => {
-    const filter = req.user.role === "Member" ? { status: "Available" } : {};
-    res.json({
-      items: await Equipment.find(filter)
-        .sort({ inventoryId: 1 })
-        .limit(50)
-        .select("inventoryId name category status")
-        .lean()
-        .maxTimeMS(1000),
-    });
-  });
+  app.get("/api/equipment", getEquipment);
+  app.post(
+    ["/api/equipment/ticket", "/api/equipment/tickets"],
+    allowRoles("Admin", "Trainer"),
+    createTicket,
+  );
+  app.get(
+    ["/api/equipment/tickets", "/api/equipment/ticket"],
+    allowRoles("Admin", "Trainer"),
+    getTickets,
+  );
+  app.patch(
+    "/api/equipment/:inventoryId/status",
+    allowRoles("Admin", "Trainer"),
+    updateEquipmentStatus,
+  );
+  app.put(
+    "/api/equipment/:inventoryId/status",
+    allowRoles("Admin", "Trainer"),
+    updateEquipmentStatus,
+  );
+  app.post(
+    "/api/equipment/:inventoryId/status",
+    allowRoles("Admin", "Trainer"),
+    updateEquipmentStatus,
+  );
   app.use("/api", (req, res, next) =>
     next(apiError(404, "API endpoint not found.")),
   );

@@ -305,4 +305,156 @@ describe("responsive application shell", () => {
       screen.getByText('The class "Power Circuit" scheduled for tomorrow has been cancelled.'),
     ).toBeInTheDocument();
   });
+  it("renders equipment controls for Admin, filters items, and submits maintenance ticket via modal", async () => {
+    const adminUser = {
+      id: "admin1",
+      firstName: "Alex",
+      lastName: "Admin",
+      role: "Admin",
+    };
+    const sampleEquipment = [
+      {
+        _id: "eq-1",
+        inventoryId: "TRD-101",
+        name: "Pro Treadmill",
+        category: "Cardio",
+        status: "Available",
+      },
+      {
+        _id: "eq-2",
+        inventoryId: "RCK-102",
+        name: "Power Rack",
+        category: "Strength",
+        status: "Under Maintenance",
+      },
+    ];
+    let submittedBody = null;
+    mockApi((url, options) => {
+      if (url.endsWith("/auth/login")) {
+        return { body: { token: "admin-session", user: adminUser } };
+      }
+      if (url.endsWith("/equipment/tickets") && (!options || options.method === "GET")) {
+        return { body: { items: [] } };
+      }
+      if (url.endsWith("/equipment/ticket") && options?.method === "POST") {
+        submittedBody = JSON.parse(options.body);
+        return {
+          status: 201,
+          body: {
+            status: "success",
+            ticketId: "TCK-101",
+            message: "Ticket TCK-101 logged successfully.",
+          },
+        };
+      }
+      if (url.endsWith("/equipment")) {
+        return { body: { items: sampleEquipment } };
+      }
+      return { body: { ...dashboard, user: adminUser } };
+    });
+
+    render(<App />);
+    await signIn("admin@gym.test");
+    fireEvent.click(screen.getByRole("button", { name: "Equipment" }));
+
+    expect(await screen.findByRole("tab", { name: /All/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Available/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Under Maintenance/ })).toBeInTheDocument();
+
+    expect(screen.getByText("Pro Treadmill")).toBeInTheDocument();
+    expect(screen.getByText("Power Rack")).toBeInTheDocument();
+
+    // Click "Under Maintenance" filter tab
+    fireEvent.click(screen.getByRole("tab", { name: /Under Maintenance/ }));
+    // Pro Treadmill is Available, so it should not be displayed when Under Maintenance is active
+    expect(screen.queryByText("Pro Treadmill")).not.toBeInTheDocument();
+    expect(screen.getByText("Power Rack")).toBeInTheDocument();
+
+    // Open ticket modal
+    fireEvent.click(screen.getByRole("button", { name: /Log maintenance ticket/ }));
+    expect(screen.getByRole("heading", { name: "Log Maintenance Ticket" })).toBeInTheDocument();
+
+    // Fill form
+    fireEvent.change(screen.getByPlaceholderText("e.g. TRD-101"), {
+      target: { value: "TRD-101" },
+    });
+    fireEvent.change(
+      screen.getByPlaceholderText(/Describe the issue/),
+      { target: { value: "Belt slipping during sprint." } },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit ticket" }));
+
+    await waitFor(() => {
+      expect(submittedBody).toEqual({
+        equipmentId: "TRD-101",
+        issueDescription: "Belt slipping during sprint.",
+      });
+    });
+
+    expect(
+      await screen.findByText("Ticket TCK-101 logged successfully."),
+    ).toBeInTheDocument();
+  });
+
+  it("allows Admin to toggle equipment status between Available and Under Maintenance", async () => {
+    const adminUser = {
+      id: "admin1",
+      firstName: "Alex",
+      lastName: "Admin",
+      role: "Admin",
+    };
+    const sampleEquipment = [
+      {
+        _id: "eq-1",
+        inventoryId: "TRD-101",
+        name: "Pro Treadmill",
+        category: "Cardio",
+        status: "Available",
+      },
+    ];
+    let patchedStatus = null;
+    mockApi((url, options) => {
+      if (url.endsWith("/auth/login")) {
+        return { body: { token: "admin-session", user: adminUser } };
+      }
+      if (url.endsWith("/equipment/tickets")) {
+        return { body: { items: [] } };
+      }
+      if (url.includes("/equipment/TRD-101/status") && options?.method === "PATCH") {
+        patchedStatus = JSON.parse(options.body).status;
+        return {
+          body: {
+            status: "success",
+            message: `Equipment status updated to "${patchedStatus}".`,
+          },
+        };
+      }
+      if (url.endsWith("/equipment")) {
+        return {
+          body: {
+            items: sampleEquipment.map((eq) =>
+              patchedStatus ? { ...eq, status: patchedStatus } : eq,
+            ),
+          },
+        };
+      }
+      return { body: { ...dashboard, user: adminUser } };
+    });
+
+    render(<App />);
+    await signIn("admin@gym.test");
+    fireEvent.click(screen.getByRole("button", { name: "Equipment" }));
+
+    expect(await screen.findByText("Pro Treadmill")).toBeInTheDocument();
+    const toggleBtn = screen.getByRole("button", { name: "Mark Under Maintenance" });
+    expect(toggleBtn).toBeInTheDocument();
+
+    fireEvent.click(toggleBtn);
+
+    expect(
+      await screen.findByText('Equipment status updated to "Under Maintenance".'),
+    ).toBeInTheDocument();
+    expect(patchedStatus).toBe("Under Maintenance");
+  });
 });
