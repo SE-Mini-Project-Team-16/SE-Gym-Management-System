@@ -458,6 +458,51 @@ h3 {
   border-radius: 9px;
   color: #66825b;
 }
+.cancel-class-button {
+  color: #923b27;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #e2b7af;
+  padding: 5px 10px;
+  border-radius: 5px;
+  margin-left: 8px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.cancel-class-button:hover:not(:disabled) {
+  background: #fdf2f0;
+  border-color: #923b27;
+}
+.cancel-class-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.cancellation-notice {
+  margin: 0 0 20px 0;
+  background: #fdf2f0;
+  border: 1px solid #f4cfc7;
+  border-left: 4px solid #923b27;
+  border-radius: 6px;
+  padding: 12px 16px;
+  max-width: 100%;
+}
+.cancellation-notice svg {
+  color: #923b27;
+  flex-shrink: 0;
+}
+.cancellation-notice strong {
+  display: block;
+  font-size: 12px;
+  color: #923b27;
+  margin-bottom: 4px;
+}
+.cancellation-notice p {
+  color: #6e2718;
+  font-size: 11px;
+  margin: 2px 0;
+}
 .badge {
   font-size: 9px;
   font-weight: 600;
