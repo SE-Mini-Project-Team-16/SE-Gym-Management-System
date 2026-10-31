@@ -126,6 +126,30 @@ const notificationSchema = new Schema(
 notificationSchema.index({ recipientId: 1, createdAt: -1 });
 notificationSchema.index({ classId: 1 });
 
+const ticketSchema = new Schema(
+  {
+    ticketId: { type: String, required: true, unique: true },
+    equipmentId: { type: String, required: true },
+    equipment: { type: Schema.Types.ObjectId, ref: "Equipment", required: true },
+    submittedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    issueDescription: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 1000,
+    },
+    status: {
+      type: String,
+      enum: ["Open", "In Progress", "Resolved"],
+      default: "Open",
+    },
+  },
+  { timestamps: true },
+);
+ticketSchema.index({ equipmentId: 1, createdAt: -1 });
+ticketSchema.index({ status: 1, createdAt: -1 });
+ticketSchema.index({ submittedBy: 1, createdAt: -1 });
+
 export const User = model("User", userSchema);
 export const GymClass = model("GymClass", classSchema);
 export const Booking = model("Booking", bookingSchema);
@@ -133,3 +157,4 @@ export const Equipment = model("Equipment", equipmentSchema);
 export const PaymentOrder = model("PaymentOrder", paymentOrderSchema);
 export const PaymentReceipt = model("PaymentReceipt", paymentReceiptSchema);
 export const Notification = model("Notification", notificationSchema);
+export const Ticket = model("Ticket", ticketSchema);
