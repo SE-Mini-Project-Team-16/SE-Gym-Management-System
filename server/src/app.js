@@ -1,6 +1,5 @@
 import express from "express";
 import helmet from "helmet";
-import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -22,7 +21,7 @@ import {
 } from "./controllers/authController.js";
 import { deleteUser, getRevenue } from "./controllers/adminController.js";
 import { createSummaryCache, loadDashboard } from "./dashboard.js";
-import { issuePass } from "./pass.js";
+import { issuePass, requireActiveMembership, verifyPassToken } from "./pass.js";
 import {
   createRazorpayOrder,
   razorpayWebhook,
@@ -41,7 +40,6 @@ import {
 } from "./controllers/equipmentController.js";
 
 const publicUser = sanitizeUser;
-const objectId = (value) => mongoose.isObjectIdOrHexString(value);
 
 export function createApp(config) {
   const app = express();
@@ -127,21 +125,10 @@ export function createApp(config) {
     async (req, res) => {
       if (typeof req.body?.token !== "string" || req.body.token.length > 4096)
         throw apiError(400, "Provide an entry pass.");
-      let payload;
-      try {
-        payload = jwt.verify(req.body.token, config.passSecret, {
-          algorithms: ["HS256"],
-          issuer: "gms",
-          audience: "gms-entry",
-        });
-      } catch {
-        throw apiError(403, "This entry pass is invalid or expired.");
-      }
-      if (payload.kind !== "entry-pass" || !objectId(payload.sub))
-        throw apiError(403, "Invalid entry pass.");
+      const payload = verifyPassToken(req.body.token, config);
       const member = await User.findById(payload.sub).lean().maxTimeMS(1000);
       if (!member) throw apiError(403, "This membership is unavailable.");
-      issuePass(member, config); // Recheck revocation, role and current membership expiry on every scan.
+      requireActiveMembership(member); // Recheck live eligibility without minting another token.
       res.json({ valid: true, member: publicUser(member) });
     },
   );

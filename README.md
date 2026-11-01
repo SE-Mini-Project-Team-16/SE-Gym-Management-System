@@ -56,6 +56,8 @@ npm run backup:verify    # Verify SHA-256 integrity of latest snapshot
 
 The pass is a reusable short-lived membership credential, not a one-use attendance record or hardware integration. A saved QR expires at the same time as the on-screen pass. Refreshing and verifying require connectivity. No pass tokens are persisted in the browser or server cache.
 
+Issue #10 verifies these features against the integrated application and adds pass refresh recovery, strict expiry checks, and cold/per-role dashboard performance thresholds. See [the issue #10 verification report](docs/issue-10-verification.md) for behavior, test results and remaining staging acceptance checks.
+
 ## Integration and deployment
 
 See [the API contract and deployment notes](docs/application.md) for model fields, module ownership, HTTPS setup, index creation, and staging acceptance checks. CI runs the integration/component suite and builds the frontend. The local benchmark is not a substitute for the test plan's 10-minute staging load test or 72-hour availability observation.

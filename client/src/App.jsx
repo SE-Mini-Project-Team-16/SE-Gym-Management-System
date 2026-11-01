@@ -549,26 +549,51 @@ function Dashboard({ data, navigate, refresh, busy, api, notify }) {
   );
 }
 
-function EntryPass({ api, notify }) {
+export function EntryPass({ api, notify }) {
   const [pass, setPass] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [retryAt, setRetryAt] = useState(null);
+  const failures = useRef(0);
+  const pending = useRef(null);
   const generation = useRef(0);
   const refresh = useCallback(async () => {
     const current = ++generation.current;
+    pending.current?.abort();
+    const controller = new AbortController();
+    pending.current = controller;
+    const deadline = setTimeout(() => controller.abort(), 10_000);
     setBusy(true);
     setError("");
-    setPass(null);
+    setRetryAt(null);
     try {
-      const result = await api("/passes/me");
-      if (current === generation.current) setPass(result);
+      const result = await api("/passes/me", { signal: controller.signal });
+      if (current === generation.current) {
+        setPass(result);
+        setNow(Date.now());
+        failures.current = 0;
+      }
     } catch (error) {
       if (current === generation.current) {
-        setError(error.message);
-        notify(error.message, "error");
+        const message =
+          error.name === "AbortError"
+            ? "The pass service took too long. Please try again."
+            : error.message;
+        const denied =
+          error.status >= 400 && error.status < 500 && error.status !== 429;
+        failures.current++;
+        if (denied) setPass(null);
+        else
+          setRetryAt(
+            Date.now() +
+              Math.min(30_000, 1000 * 2 ** Math.min(failures.current - 1, 5)),
+          );
+        setError(message);
+        if (denied || failures.current === 1) notify(message, "error");
       }
     } finally {
+      clearTimeout(deadline);
       if (current === generation.current) setBusy(false);
     }
   }, [api, notify]);
@@ -576,6 +601,7 @@ function EntryPass({ api, notify }) {
     refresh();
     return () => {
       generation.current++;
+      pending.current?.abort();
     };
   }, [refresh]);
   useEffect(() => {
@@ -584,17 +610,34 @@ function EntryPass({ api, notify }) {
   }, []);
   // Refresh while this page is visible; never show an expired code as usable.
   useEffect(() => {
-    if (!pass) return;
-    const id = setTimeout(
-      refresh,
-      Math.max(1000, new Date(pass.expiresAt).getTime() - Date.now() - 30_000),
-    );
+    if (busy) return;
+    if (retryAt === null && !pass) return;
+    const expiry = new Date(pass?.expiresAt).getTime();
+    const membershipEnd = new Date(pass?.member.membershipExpiresAt).getTime();
+    // A membership-capped code cannot be extended by refreshing every second.
+    const capped =
+      Math.floor(membershipEnd / 1000) <= Math.floor(expiry / 1000);
+    const due = retryAt ?? expiry - (capped ? 0 : 30_000);
+    const id = setTimeout(refresh, Math.max(0, due - Date.now()));
     return () => clearTimeout(id);
-  }, [pass, refresh]);
+  }, [pass, busy, retryAt, refresh]);
+  useEffect(() => {
+    if (busy) return;
+    const recover = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("online", recover);
+    document.addEventListener("visibilitychange", recover);
+    return () => {
+      window.removeEventListener("online", recover);
+      document.removeEventListener("visibilitychange", recover);
+    };
+  }, [busy, refresh]);
   const valid = pass && new Date(pass.expiresAt).getTime() > now;
   function download() {
     const svg = document.querySelector("#entry-pass-qr");
-    if (!svg || !valid) return;
+    if (!svg || !valid || new Date(pass.expiresAt).getTime() <= Date.now())
+      return;
     const blob = new Blob([new XMLSerializer().serializeToString(svg)], {
       type: "image/svg+xml",
     });
@@ -621,10 +664,8 @@ function EntryPass({ api, notify }) {
             <Brand />
             <Badge>MEMBER PASS</Badge>
           </div>
-          {busy ? (
+          {busy && !valid ? (
             <Loading />
-          ) : error ? (
-            <Empty title="Pass unavailable">{error}</Empty>
           ) : valid ? (
             <>
               <div className="qr-wrap">
@@ -640,6 +681,11 @@ function EntryPass({ api, notify }) {
               <h2>{pass.member.name}</h2>
               <p>{pass.member.tier} membership</p>
               <Badge>Ready for check-in</Badge>
+              {error && (
+                <p role="status" className="small">
+                  We couldn’t refresh your pass. Trying again shortly.
+                </p>
+              )}
               <div className="pass-details">
                 <div>
                   <span>CODE EXPIRES</span>
@@ -651,6 +697,11 @@ function EntryPass({ api, notify }) {
                 </div>
               </div>
             </>
+          ) : error ? (
+            <Empty title="Pass unavailable">
+              {error}
+              {retryAt !== null && " We’ll retry automatically."}
+            </Empty>
           ) : (
             <Empty title="This pass has expired">
               Refresh your pass to get a new code.
@@ -681,11 +732,7 @@ function EntryPass({ api, notify }) {
               <RefreshCw size={16} />
               Refresh pass
             </button>
-            <button
-              className="secondary"
-              disabled={!valid || busy}
-              onClick={download}
-            >
+            <button className="secondary" disabled={!valid} onClick={download}>
               <ArrowDownToLine size={16} />
               Save code
             </button>
