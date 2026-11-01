@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
@@ -240,6 +240,29 @@ describe("API gateway / issue #1", () => {
 });
 
 describe("dashboard and entry pass", () => {
+  it("keeps pass retrieval independent of failed dashboard queries", async () => {
+    const query = vi.spyOn(GymClass, "find").mockImplementationOnce(() => {
+      throw new mongoose.mongo.MongoNetworkError("Dashboard unavailable");
+    });
+    try {
+      await get("/dashboard").expect(503);
+      await get("/passes/me").expect(200);
+      // The failed summary is evicted, so a recovered dashboard can load normally.
+      await get("/dashboard").expect(200);
+    } finally {
+      query.mockRestore();
+    }
+  });
+  it("rejects an issued pass after the member is disabled or changes role", async () => {
+    const { body: pass } = await get("/passes/me").expect(200);
+    await User.updateOne({ _id: member._id }, { $set: { disabled: true } });
+    await post("/passes/verify", { token: pass.token }, trainer).expect(403);
+    await User.updateOne(
+      { _id: member._id },
+      { $set: { disabled: false, role: "Trainer" } },
+    );
+    await post("/passes/verify", { token: pass.token }, admin).expect(403);
+  });
   it("returns member-scoped counts and no other member data", async () => {
     const response = await get("/dashboard").expect(200);
     expect(response.body.stats).toEqual({
