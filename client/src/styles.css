@@ -458,7 +458,8 @@ h3 {
   border-radius: 9px;
   color: #66825b;
 }
-.cancel-class-button {
+.cancel-class-button,
+.cancel-booking-button {
   color: #923b27;
   font-size: 11px;
   font-weight: 500;
@@ -471,13 +472,43 @@ h3 {
   white-space: nowrap;
   transition: all 0.15s ease;
 }
-.cancel-class-button:hover:not(:disabled) {
+.cancel-class-button:hover:not(:disabled),
+.cancel-booking-button:hover:not(:disabled) {
   background: #fdf2f0;
   border-color: #923b27;
 }
-.cancel-class-button:disabled {
+.cancel-class-button:disabled,
+.cancel-booking-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.book-class-button {
+  color: #1b4237;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #c9e49b;
+  border: 1px solid #b2d67d;
+  padding: 5px 12px;
+  border-radius: 5px;
+  margin-left: 8px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.book-class-button:hover:not(:disabled) {
+  background: #b8dc84;
+  border-color: #9ecc61;
+}
+.book-class-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.book-class-button.booked {
+  background: #edf5ea;
+  color: #3b5e3b;
+  border-color: #c4dec1;
+  cursor: default;
+  opacity: 1;
 }
 .cancellation-notice {
   margin: 0 0 20px 0;

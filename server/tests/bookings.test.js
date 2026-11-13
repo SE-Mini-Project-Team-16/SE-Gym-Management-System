@@ -207,4 +207,99 @@ describe("class booking / issue #6 / REQ-3", () => {
     expect(otherList.body.items).toEqual([]);
     await expectInventory(4, 1);
   });
+
+  describe("booking cancellation and IDOR protection (TC-SEC-08)", () => {
+    it("allows a member to cancel their own active booking and increments available slots", async () => {
+      const res = await book();
+      const bookingId = res.body.bookingId;
+      await expectInventory(4, 1);
+
+      const cancelRes = await request(app)
+        .post(`/api/bookings/${bookingId}/cancel`)
+        .auth(token(members[0]), { type: "bearer" })
+        .expect(200);
+
+      expect(cancelRes.body.status).toBe("success");
+      expect(cancelRes.body.message).toBe("Booking cancelled successfully.");
+
+      const updated = await Booking.findById(bookingId);
+      expect(updated.status).toBe("Cancelled");
+
+      // Verify class slots restored
+      await expectInventory(5, 0);
+
+      // Verify member can re-book the class after cancellation
+      await book().expect(200);
+      await expectInventory(4, 1);
+    });
+
+    it("TC-SEC-08: prevents Member A from cancelling Member B's booking (IDOR)", async () => {
+      // Member 0 books a slot
+      const res = await book(undefined, members[0]);
+      const bookingId = res.body.bookingId;
+      await expectInventory(4, 1);
+
+      // Member 1 attempts to cancel Member 0's booking
+      const idorRes = await request(app)
+        .post(`/api/bookings/${bookingId}/cancel`)
+        .auth(token(members[1]), { type: "bearer" })
+        .expect(403);
+
+      expect(idorRes.body.message).toBe("You can only cancel your own bookings.");
+
+      // Booking must remain Active and slots unchanged
+      const unaffected = await Booking.findById(bookingId);
+      expect(unaffected.status).toBe("Active");
+      await expectInventory(4, 1);
+    });
+
+    it("rejects cancelling an already cancelled booking", async () => {
+      const res = await book();
+      const bookingId = res.body.bookingId;
+
+      await request(app)
+        .post(`/api/bookings/${bookingId}/cancel`)
+        .auth(token(members[0]), { type: "bearer" })
+        .expect(200);
+
+      await request(app)
+        .post(`/api/bookings/${bookingId}/cancel`)
+        .auth(token(members[0]), { type: "bearer" })
+        .expect(400);
+    });
+
+    it("rejects cancelling a booking for a class that has already started", async () => {
+      const res = await book();
+      const bookingId = res.body.bookingId;
+
+      // Fast forward class startsAt to past
+      await GymClass.updateOne(
+        { _id: gymClass._id },
+        { $set: { startsAt: new Date(Date.now() - 60_000) } },
+      );
+
+      const pastRes = await request(app)
+        .post(`/api/bookings/${bookingId}/cancel`)
+        .auth(token(members[0]), { type: "bearer" })
+        .expect(400);
+
+      expect(pastRes.body.message).toBe(
+        "Cannot cancel a booking for a class that has already started or ended.",
+      );
+    });
+
+    it("supports DELETE /api/bookings/:id for cancellation", async () => {
+      const res = await book();
+      const bookingId = res.body.bookingId;
+
+      await request(app)
+        .delete(`/api/bookings/${bookingId}`)
+        .auth(token(members[0]), { type: "bearer" })
+        .expect(200);
+
+      const updated = await Booking.findById(bookingId);
+      expect(updated.status).toBe("Cancelled");
+      await expectInventory(5, 0);
+    });
+  });
 });

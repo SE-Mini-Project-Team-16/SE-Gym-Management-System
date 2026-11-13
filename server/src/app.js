@@ -27,7 +27,7 @@ import {
   razorpayWebhook,
   verifyRazorpayPayment,
 } from "./payments.js";
-import { createBooking } from "./bookings.js";
+import { createBooking, cancelBooking } from "./bookings.js";
 import {
   cancelClass,
   getNotifications,
@@ -178,6 +178,16 @@ export function createApp(config) {
   );
   app.get("/api/notifications", getNotifications);
   app.post("/api/bookings", allowRoles("Member"), createBooking);
+  app.post(
+    ["/api/bookings/:id/cancel", "/api/bookings/cancel"],
+    allowRoles("Member", "Admin"),
+    cancelBooking,
+  );
+  app.delete(
+    "/api/bookings/:id",
+    allowRoles("Member", "Admin"),
+    cancelBooking,
+  );
   app.get("/api/bookings", async (req, res) => {
     const filter = req.user.role === "Member" ? { memberId: req.user._id } : {};
     if (req.user.role === "Trainer") {
