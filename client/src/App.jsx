@@ -360,6 +360,16 @@ function Dashboard({ data, navigate, refresh, busy, api, notify }) {
                       ? `${item.availableSlots} spots left`
                       : "Full"}
                   </Badge>
+                  {user.role === "Member" && (
+                    <button
+                      type="button"
+                      className="book-class-button"
+                      onClick={() => navigate("Bookings")}
+                      aria-label={`Book class ${item.name}`}
+                    >
+                      {item.availableSlots === 0 ? "Full" : "Book"}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -820,6 +830,8 @@ function Collection({ page, api, notify, user }) {
   const [classes, setClasses] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [cancellingId, setCancellingId] = useState(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState(null);
+  const [bookingId, setBookingId] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [equipmentFilter, setEquipmentFilter] = useState("All");
   const [showTicketModal, setShowTicketModal] = useState(false);
@@ -962,6 +974,49 @@ function Collection({ page, api, notify, user }) {
       setCancellingId(null);
     }
   }
+
+  async function handleCancelBooking(booking) {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.confirm === "function" &&
+      !window.confirm(
+        `Are you sure you want to cancel your booking for "${booking.classId?.name || "this class"}"?`,
+      )
+    ) {
+      return;
+    }
+    setCancellingBookingId(booking._id);
+    try {
+      const res = await api(`/bookings/${booking._id}/cancel`, {
+        method: "POST",
+      });
+      notify(res.message || "Booking cancelled successfully.", "success");
+      setVersion((v) => v + 1);
+    } catch (err) {
+      notify(err.message, "error");
+    } finally {
+      setCancellingBookingId(null);
+    }
+  }
+
+  async function handleBookClass(cls) {
+    setBookingId(cls._id);
+    try {
+      const res = await api("/bookings", {
+        method: "POST",
+        body: JSON.stringify({ classId: cls._id }),
+      });
+      notify(
+        res.message || `Booked "${cls.name}" successfully!`,
+        "success",
+      );
+      setVersion((v) => v + 1);
+    } catch (err) {
+      notify(err.message, "error");
+    } finally {
+      setBookingId(null);
+    }
+  }
   const headings = {
     Members: [
       "THE PEOPLE WHO SHOW UP",
@@ -976,7 +1031,7 @@ function Collection({ page, api, notify, user }) {
     Equipment: [
       "TOOLS FOR YOUR NEXT CHAPTER",
       "Built for your progress.",
-      "Browse up to 50 equipment items at your gym.",
+      "Browse equipment available on the gym floor for walk-in use.",
     ],
   };
   const [eyebrow, title, description] = headings[page];
@@ -1109,6 +1164,21 @@ function Collection({ page, api, notify, user }) {
                     ? "Class cancelled"
                     : item.status}
                 </Badge>
+                {user?.role === "Member" &&
+                  item.status === "Active" &&
+                  item.classId?.status !== "Cancelled" && (
+                    <button
+                      type="button"
+                      className="cancel-booking-button"
+                      disabled={cancellingBookingId === item._id}
+                      onClick={() => handleCancelBooking(item)}
+                      aria-label={`Cancel booking ${item.classId?.name || ""}`}
+                    >
+                      {cancellingBookingId === item._id
+                        ? "Cancelling…"
+                        : "Cancel booking"}
+                    </button>
+                  )}
               </div>
             ))}
           </div>
@@ -1269,33 +1339,68 @@ function Collection({ page, api, notify, user }) {
               : "Manage upcoming sessions and cancel classes if needed."}
           </p>
           {classes.length ? (
-            classes.map((item) => (
-              <div className="class-row" key={item._id}>
-                <div>
-                  <h3>{item.name}</h3>
-                  <p>
-                    {fullDate(item.startsAt)} · {time(item.startsAt)}
-                  </p>
+            classes.map((item) => {
+              const isBooked =
+                user?.role === "Member" &&
+                Array.isArray(items) &&
+                items.some(
+                  (b) =>
+                    b &&
+                    b.status === "Active" &&
+                    String(b.classId?._id || b.classId || "") ===
+                      String(item._id),
+                );
+              const isFull = !item.availableSlots || item.availableSlots <= 0;
+              return (
+                <div className="class-row" key={item._id}>
+                  <div>
+                    <h3>{item.name}</h3>
+                    <p>
+                      {fullDate(item.startsAt)} · {time(item.startsAt)}
+                    </p>
+                  </div>
+                  <Badge muted={isFull}>
+                    {item.availableSlots} spots left
+                  </Badge>
+                  {user?.role === "Member" && (
+                    <button
+                      type="button"
+                      className={`book-class-button ${isBooked ? "booked" : ""}`}
+                      disabled={isBooked || isFull || bookingId === item._id}
+                      onClick={() => handleBookClass(item)}
+                      aria-label={
+                        isBooked
+                          ? `Already booked ${item.name}`
+                          : `Book class ${item.name}`
+                      }
+                    >
+                      {bookingId === item._id
+                        ? "Booking…"
+                        : isBooked
+                          ? "Booked ✓"
+                          : isFull
+                            ? "Full"
+                            : "Book class"}
+                    </button>
+                  )}
+                  {(user?.role === "Admin" ||
+                    (user?.role === "Trainer" &&
+                      (!item.trainerId ||
+                        String(item.trainerId) ===
+                          String(user?.id || user?._id)))) && (
+                    <button
+                      type="button"
+                      className="cancel-class-button"
+                      disabled={cancellingId === item._id}
+                      onClick={() => handleCancelClass(item)}
+                      aria-label={`Cancel class ${item.name}`}
+                    >
+                      {cancellingId === item._id ? "Cancelling…" : "Cancel class"}
+                    </button>
+                  )}
                 </div>
-                <Badge muted={!item.availableSlots}>
-                  {item.availableSlots} spots left
-                </Badge>
-                {(user?.role === "Admin" ||
-                  (user?.role === "Trainer" &&
-                    (!item.trainerId ||
-                      String(item.trainerId) === String(user?.id || user?._id)))) && (
-                  <button
-                    type="button"
-                    className="cancel-class-button"
-                    disabled={cancellingId === item._id}
-                    onClick={() => handleCancelClass(item)}
-                    aria-label={`Cancel class ${item.name}`}
-                  >
-                    {cancellingId === item._id ? "Cancelling…" : "Cancel class"}
-                  </button>
-                )}
-              </div>
-            ))
+              );
+            })
           ) : (
             <Empty title="No classes scheduled" />
           )}

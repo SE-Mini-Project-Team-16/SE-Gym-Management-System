@@ -305,6 +305,153 @@ describe("responsive application shell", () => {
       screen.getByText('The class "Power Circuit" scheduled for tomorrow has been cancelled.'),
     ).toBeInTheDocument();
   });
+  it("renders book class controls for Members and dispatches booking API", async () => {
+    const openClass = {
+      _id: "class-789",
+      name: "HIIT Workout",
+      startsAt: new Date(Date.now() + 7200_000).toISOString(),
+      durationMinutes: 45,
+      capacity: 10,
+      availableSlots: 5,
+    };
+    let booked = false;
+    let bookingsList = [];
+    mockApi((url, options) => {
+      if (url.endsWith("/auth/login")) {
+        return { body: { token: "member-session", user } };
+      }
+      if (url.endsWith("/bookings") && options?.method === "POST") {
+        booked = true;
+        bookingsList = [
+          {
+            _id: "bk-1",
+            classId: openClass,
+            status: "Active",
+            createdAt: new Date().toISOString(),
+          },
+        ];
+        return {
+          body: {
+            status: "success",
+            bookingId: "bk-1",
+            remainingSlots: 4,
+          },
+        };
+      }
+      if (url.endsWith("/classes")) {
+        return {
+          body: {
+            items: [
+              {
+                ...openClass,
+                availableSlots: booked ? 4 : 5,
+              },
+            ],
+          },
+        };
+      }
+      if (url.endsWith("/bookings")) {
+        return { body: { items: bookingsList } };
+      }
+      if (url.endsWith("/notifications")) {
+        return { body: { items: [] } };
+      }
+      return { body: dashboard };
+    });
+
+    render(<App />);
+    await signIn();
+    fireEvent.click(screen.getByRole("button", { name: "Bookings" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Upcoming classes" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("HIIT Workout")).toBeInTheDocument();
+
+    const bookBtn = screen.getByRole("button", { name: "Book class HIIT Workout" });
+    expect(bookBtn).toBeInTheDocument();
+    expect(bookBtn).not.toBeDisabled();
+
+    fireEvent.click(bookBtn);
+
+    expect(
+      await screen.findByText('Booked "HIIT Workout" successfully!'),
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      const bookedBtn = screen.getByRole("button", { name: "Already booked HIIT Workout" });
+      expect(bookedBtn).toBeInTheDocument();
+      expect(bookedBtn).toBeDisabled();
+      expect(bookedBtn).toHaveTextContent("Booked ✓");
+    });
+  });
+  it("renders cancel booking control for Members and dispatches booking cancellation API", async () => {
+    const bookedClass = {
+      _id: "class-999",
+      name: "Pilates Core",
+      startsAt: new Date(Date.now() + 86400_000).toISOString(),
+    };
+    let bookingCancelled = false;
+    mockApi((url, options) => {
+      if (url.endsWith("/auth/login")) {
+        return { body: { token: "member-session", user } };
+      }
+      if (url.includes("/bookings/bk-active/cancel") && options?.method === "POST") {
+        bookingCancelled = true;
+        return {
+          body: {
+            status: "success",
+            message: "Booking cancelled successfully.",
+            bookingId: "bk-active",
+          },
+        };
+      }
+      if (url.endsWith("/bookings")) {
+        return {
+          body: {
+            items: [
+              {
+                _id: "bk-active",
+                classId: bookedClass,
+                status: bookingCancelled ? "Cancelled" : "Active",
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          },
+        };
+      }
+      if (url.endsWith("/classes")) {
+        return { body: { items: [bookedClass] } };
+      }
+      if (url.endsWith("/notifications")) {
+        return { body: { items: [] } };
+      }
+      return { body: dashboard };
+    });
+    vi.stubGlobal("confirm", () => true);
+
+    render(<App />);
+    await signIn();
+    fireEvent.click(screen.getByRole("button", { name: "Bookings" }));
+
+    const cancelBookingBtn = await screen.findByRole("button", {
+      name: "Cancel booking Pilates Core",
+    });
+    expect(cancelBookingBtn).toBeInTheDocument();
+
+    fireEvent.click(cancelBookingBtn);
+
+    expect(
+      await screen.findByText("Booking cancelled successfully."),
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "Cancel booking Pilates Core" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("Cancelled")).toBeInTheDocument();
+    });
+  });
   it("renders equipment controls for Admin, filters items, and submits maintenance ticket via modal", async () => {
     const adminUser = {
       id: "admin1",
